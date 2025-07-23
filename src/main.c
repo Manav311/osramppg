@@ -7,233 +7,123 @@ LOG_MODULE_REGISTER(as705x, LOG_LEVEL_DBG);
 
 // Replace this with the actual I2C bus your device is connected to
 #define I2C_DEV DT_LABEL(DT_NODELABEL(i2c21))
-#define AS705X_MCU_ADDR 0x55  // I2C address of the MCU
 
-// Command IDs
-#define CMD_GET_APP_VERSION    0x01
-#define CMD_GET_CHIP_VARIANT   0x02
-#define CMD_GET_STATUS         0x03
-#define CMD_START_MEASUREMENT  0x10
-#define CMD_STOP_MEASUREMENT   0x11
-#define CMD_READ_FIFO          0x12
-#define CMD_SET_CONFIGURATION  0x20
-
-// Status bit definitions (example - check your datasheet)
-#define STATUS_MEASURING       (1 << 0)
-#define STATUS_FIFO_READY      (1 << 1)
-#define STATUS_ERROR           (1 << 7)
 
 const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 
-int send_command(uint8_t cmd_id, uint8_t *resp_buf, size_t resp_len) {
-    int ret = i2c_write_read(i2c_dev, AS705X_MCU_ADDR, &cmd_id, 1, resp_buf, resp_len);
-    if (ret < 0) {
-        LOG_ERR("I2C command 0x%02X failed (%d)", cmd_id, ret);
-    }
-    return ret;
+
+#define AS7056_I2C_ADDR 0x55
+
+#define REG_APP_ID          0x00
+#define REG_APP_VER         0x01
+#define REG_SEQ_CFG         0x10
+#define REG_LED_SEQ1_SUB12  0x11
+#define REG_PD_SEQ1_SUB12   0x13
+#define REG_SEQ1_LED1_CURR  0x15
+#define REG_SEQ1_LED2_CURR  0x16
+#define REG_MEAS_CTRL       0x20
+#define REG_FIFO_LEVEL0     0x28
+#define REG_FIFO_LEVEL1     0x29
+#define REG_FIFO_DATA       0x2A
+#define REG_LED_CTRL        0x03
+#define REG_LED1_CURR       0x04
+#define REG_SEQ_STOP        0x0C
+
+
+int write_reg(uint8_t reg, uint8_t val) {
+    uint8_t buf[2] = { reg, val };
+    return i2c_write(i2c_dev, buf, 2, AS7056_I2C_ADDR);
 }
 
-void decode_status(uint8_t status) {
-    LOG_INF("Status: 0x%02X", status);
-    LOG_INF("  Bit 7: %s", (status & 0x80) ? "SET" : "CLEAR");
-    LOG_INF("  Bit 4: %s", (status & 0x10) ? "SET" : "CLEAR");
-    LOG_INF("  Bit 2: %s", (status & 0x04) ? "SET" : "CLEAR");
-    LOG_INF("  Bit 0: %s", (status & 0x01) ? "SET" : "CLEAR");
+int read_reg(uint8_t reg, uint8_t *val) {
+    return i2c_write_read(i2c_dev, AS7056_I2C_ADDR, &reg, 1, val, 1);
 }
 
-int set_configuration_proper(void) {
-    // More conservative configuration
-    uint8_t config_payload[14] = {
-        0x01, // Enable only channel 0 (single LED)
-        0x1F, // LED1 current (reduced from 0x3F)
-        0x00, // LED2 current (disabled)
-        0x00, // LED3 current (disabled)
-        0x02, // Gain (reduced from 0x04)
-        0x02, // Sampling rate (25Hz, reduced from 50Hz)
-        0x01, // Averaging
-        0x01, // FIFO threshold
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // Reserved bytes
-    };
-
-    uint8_t config_cmd[15];
-    config_cmd[0] = CMD_SET_CONFIGURATION;
-    memcpy(&config_cmd[1], config_payload, 14);
-
-    int ret = i2c_write(i2c_dev, config_cmd, sizeof(config_cmd), AS705X_MCU_ADDR);
-    LOG_INF("SET_CONFIGURATION returned: %d", ret);
-    
-    if (ret == 0) {
-        LOG_INF("Sensor configured successfully");
-        
-        // Verify configuration took effect by checking status
-        k_msleep(100); // Allow time for configuration
-        uint8_t status;
-        if (send_command(CMD_GET_STATUS, &status, 1) == 0) {
-            LOG_INF("Status after configuration: 0x%02X", status);
-            decode_status(status);
-        }
-    } else {
-        LOG_ERR("Configuration failed: %d", ret);
-    }
-    
-    return ret;
-}
-
-void parse_measurement(const uint8_t *data, size_t len) {
-    if (len < 1) {
-        LOG_ERR("Invalid FIFO response - no data");
-        return;
-    }
-
-    uint8_t sample_count = data[0];
-    LOG_INF("Samples in FIFO: %d", sample_count);
-
-    if (sample_count == 0) {
-        LOG_WRN("FIFO is empty - no samples available");
-        return;
-    }
-
-    size_t expected_len = 1 + sample_count * 3;
-    if (len < expected_len) {
-        LOG_ERR("Truncated FIFO: expected %zu bytes, got %zu", expected_len, len);
-        return;
-    }
-
-    for (int i = 0; i < sample_count; i++) {
-        uint32_t sample = ((uint32_t)data[1 + i * 3] << 16) |
-                          ((uint32_t)data[2 + i * 3] << 8) |
-                          ((uint32_t)data[3 + i * 3]);
-        LOG_INF("Sample[%d]: %u (0x%06X)", i, sample, sample);
-    }
-}
-
-int wait_for_samples(int timeout_ms) {
-    int elapsed = 0;
-    const int poll_interval = 100;
-    
-    while (elapsed < timeout_ms) {
-        uint8_t status;
-        if (send_command(CMD_GET_STATUS, &status, 1) == 0) {
-            LOG_DBG("Polling status: 0x%02X (elapsed: %dms)", status, elapsed);
-            
-            // Check if FIFO has data (you may need to adjust this condition)
-            if (status != 0x95) { // Status changed from initial value
-                return 0; // Success
-            }
-        }
-        
-        k_msleep(poll_interval);
-        elapsed += poll_interval;
-    }
-    
-    LOG_WRN("Timeout waiting for samples after %dms", timeout_ms);
-    return -ETIMEDOUT;
+int read_fifo_samples(uint8_t *buf, size_t len) {
+    uint8_t reg = REG_FIFO_DATA;
+    return i2c_write_read(i2c_dev, AS7056_I2C_ADDR, &reg, 1, buf, len);
 }
 
 void main(void)
 {
     if (!device_is_ready(i2c_dev)) {
-        LOG_ERR("I2C device not ready");
+        printk("I2C not ready\n");
         return;
     }
 
-    LOG_INF("Communicating with AS705x Application Manager...");
+    printk("AS7056 configured, starting measurement...\n");
 
-    // Get firmware version
-    uint8_t version[4];
-    if (send_command(CMD_GET_APP_VERSION, version, sizeof(version)) == 0) {
-        LOG_INF("Firmware version: %d.%d.%d.%d", version[0], version[1], version[2], version[3]);
-    }
+    // Stop sequencer if running
+    write_reg(REG_SEQ_STOP, 0x01);
+    k_msleep(50);
 
-    // Get chip variant
-    uint8_t variant;
-    if (send_command(CMD_GET_CHIP_VARIANT, &variant, 1) == 0) {
-        LOG_INF("Chip variant: 0x%02X (%s)", variant, variant == 0x00 ? "AS7056" : "AS7057");
-    }
+    // Sequencer configuration
+    write_reg(REG_SEQ_CFG, 0x01);         // Enable sequencer
+    write_reg(REG_LED_SEQ1_SUB12, 0x12);  // LED1 sub1, LED2 sub2
+    write_reg(REG_PD_SEQ1_SUB12, 0x22);   // PD2 for both sub1 and sub2
+    write_reg(REG_SEQ1_LED1_CURR, 0x3F);  // Max current
+    write_reg(REG_SEQ1_LED2_CURR, 0x3F);  // Max current
 
-    // Get initial status
-    uint8_t status;
-    if (send_command(CMD_GET_STATUS, &status, 1) == 0) {
-        LOG_INF("Initial Application Status: 0x%02X", status);
-        decode_status(status);
-    }
-
-    // Stop any ongoing measurements first
-    LOG_INF("Stopping any ongoing measurements...");
-    send_command(CMD_STOP_MEASUREMENT, NULL, 0);
+    write_reg(REG_MEAS_CTRL, 0x01);       // Start sequencer
     k_msleep(100);
 
-    // Configure the sensor
-    if (set_configuration_proper() != 0) {
-        LOG_ERR("Failed to configure sensor, aborting");
-        return;
-    }
+    uint32_t no_sample_time_ms = 0;
+    bool test_mode_triggered = false;
 
-    // Start measurement
-    LOG_INF("Starting measurement...");
-    if (send_command(CMD_START_MEASUREMENT, NULL, 0) == 0) {
-        LOG_INF("Measurement command sent successfully");
-    } else {
-        LOG_ERR("Failed to start measurement");
-        return;
-    }
-
-    // Give some time for the measurement to start and status to update
-    k_msleep(200);
-
-    // Check status after starting
-    if (send_command(CMD_GET_STATUS, &status, 1) == 0) {
-        LOG_INF("Status after start command: 0x%02X", status);
-        decode_status(status);
-    }
-
-    // Wait for samples to be available
-    LOG_INF("Waiting for samples...");
-    if (wait_for_samples(5000) != 0) {
-        LOG_WRN("No samples detected, but continuing with FIFO reads");
-    }
-
-    // Read FIFO multiple times with longer intervals
-    uint8_t fifo_data[64]; // Increased buffer size
-    for (int i = 0; i < 5; i++) {
-        k_msleep(1000); // Longer delay between reads
-        
-        LOG_INF("FIFO read cycle %d:", i + 1);
-        
-        // Check status before reading
-        if (send_command(CMD_GET_STATUS, &status, 1) == 0) {
-            LOG_INF("  Status before read: 0x%02X", status);
+    while (1) {
+        uint8_t level_buf[2];
+        if (i2c_write_read(i2c_dev, AS7056_I2C_ADDR,
+                           (uint8_t[]){REG_FIFO_LEVEL0}, 1,
+                           level_buf, 2) != 0) {
+            printk("FIFO level read error\n");
+            k_msleep(100);
+            continue;
         }
-        
-        // Read FIFO
-        if (send_command(CMD_READ_FIFO, fifo_data, sizeof(fifo_data)) == 0) {
-            parse_measurement(fifo_data, sizeof(fifo_data));
-        } else {
-            LOG_ERR("  FIFO read failed");
+        uint16_t fifo_level = level_buf[0] | ((uint16_t)level_buf[1] << 8);
+
+        if (fifo_level < 3) {
+            no_sample_time_ms += 10;
+            if (!test_mode_triggered && no_sample_time_ms >= 5000) {
+                printk("[!] No data received — falling back to LED test mode (LED1 ON constantly)\n");
+
+                write_reg(REG_SEQ_STOP, 0x01);
+                k_msleep(50);
+                write_reg(REG_LED_CTRL, 0x01);   // Enable LED1 constant mode
+                write_reg(REG_LED1_CURR, 0x3F);  // 100% current
+                test_mode_triggered = true;
+            }
+            k_msleep(10);
+            continue;
         }
-    }
 
-    // Stop measurement
-    LOG_INF("Stopping measurement...");
-    if (send_command(CMD_STOP_MEASUREMENT, NULL, 0) == 0) {
-        LOG_INF("Measurement stopped successfully");
-    }
+        no_sample_time_ms = 0;
 
-    // Final status check
-    k_msleep(100);
-    if (send_command(CMD_GET_STATUS, &status, 1) == 0) {
-        LOG_INF("Final status: 0x%02X", status);
-        decode_status(status);
-    }
+        while (fifo_level >= 3) {
+            uint8_t sample_bytes[3];
+            if (read_fifo_samples(sample_bytes, 3) != 0) {
+                printk("FIFO read error\n");
+                break;
+            }
 
-    // Test invalid command
-    LOG_INF("Testing invalid command...");
-    uint8_t bogus_cmd = 0xFF, resp;
-    if (i2c_write_read(i2c_dev, AS705X_MCU_ADDR, &bogus_cmd, 1, &resp, 1) == 0) {
-        LOG_INF("Invalid command test response: 0x%02X", resp);
-    } else {
-        LOG_INF("Invalid command rejected (as expected)");
-    }
+            uint32_t raw_sample = sample_bytes[0]
+                                 | ((uint32_t)sample_bytes[1] << 8)
+                                 | ((uint32_t)sample_bytes[2] << 16);
 
-    LOG_INF("Test sequence complete.");
+            uint8_t marker = (raw_sample >> 21) & 0x07;
+            int32_t measurement = (int32_t)(raw_sample & 0x1FFFFF);
+            if (measurement & 0x100000) {
+                measurement |= ~0x1FFFFF;
+            }
+
+            static uint8_t sub_index = 1;
+            if (marker == 0) sub_index = 1;
+            else sub_index += 1;
+
+            printk("LED%u: %d\n", sub_index, measurement);
+
+            fifo_level -= 3;
+        }
+
+        k_msleep(10);
+    }
 }
