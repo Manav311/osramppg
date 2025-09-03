@@ -1,67 +1,67 @@
-// AS7056 Enhanced Sequence Control & Data Acquisition
-// Addresses the sequence going IDLE issue and enables continuous measurement
+// AS7058 Enhanced PPG System - COMPREHENSIVE DIAGNOSTIC VERSION
+// Addresses persistent VCSEL errors through systematic chip reset and configuration
+// Includes full register diagnostics and alternative measurement approaches
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/logging/log.h>
 
-LOG_MODULE_REGISTER(as7056_enhanced, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(as7058_enhanced, LOG_LEVEL_DBG);
 
 const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c21));
-#define AS7056_I2C_ADDR 0x55
+#define AS7058_I2C_ADDR 0x55
 
-// Register definitions from your working dump
-#define REG_CONTROL           0x10
-#define REG_CGB_CFG           0x11
-#define REG_REF_CFGA          0x15
-#define REG_REF_CFGB          0x16
-#define REG_MOD1_CFGA         0x1B
-#define REG_MOD1_CFGB         0x1C
-#define REG_MOD1_CFGC         0x1D
-#define REG_MOD1_CFGD         0x1E
-#define REG_MOD1_CFGE         0x1F
-#define REG_MOD1_CFGF         0x20
+// Essential AS7058 Register Definitions
+#define REG_CLK_CFG           0x18
+#define REG_REF_CFG1          0x19
+#define REG_REF_CFG2          0x1A
+#define REG_STANDBY_ON1       0x1C
+#define REG_STANDBY_ON2       0x1D
+#define REG_PWR_ON            0x2D
+#define REG_PWR_ISO           0x2E
 
-// Sequence enable registers (from your dump)
-#define REG_MOD1_SEQ1_SUB_EN  0x4C
-#define REG_MOD1_SEQ2_SUB_EN  0x4D
-#define REG_MOD2_SEQ1_SUB_EN  0x4E
-#define REG_MOD2_SEQ2_SUB_EN  0x4F
+// VCSEL Safety System (CRITICAL)
+#define REG_VCSEL_PASSWORD    0x40
+#define REG_VCSEL_CFG         0x41
+#define REG_VCSEL_MODE        0x42
+#define REG_LED_CFG           0x43
 
-// LED current registers
-#define REG_SEQ1_LED1_CURR    0x29
-#define REG_SEQ2_LED1_CURR    0x2A
-#define REG_SEQ1_LED2_CURR    0x2B
-#define REG_SEQ2_LED2_CURR    0x2C
+// PPG Core Configuration
+#define REG_PPGMOD_CFG3       0x39
+#define REG_PPGMOD1_CFG1      0x3A
+#define REG_PPGMOD1_CFG2      0x3B
+#define REG_PPGMOD1_CFG3      0x3C
 
-// Sequence configuration
-#define REG_SEQ_CONFIG        0x43
-#define REG_SEQ_FREQL         0x46
-#define REG_SEQ_FREQH         0x47
-#define REG_SEQ1_FREQDIVL     0x48
-#define REG_SEQ1_FREQDIVH     0x49
-#define REG_SEQ2_FREQDIVL     0x4A
-#define REG_SEQ2_FREQDIVH     0x4B
+// LED and Photodiode
+#define REG_LED1_ICTRL        0x46
+#define REG_LED_IRNG1         0x4E
+#define REG_LED_SUB1          0x50
+#define REG_PPG1_PDSEL1       0x5A
 
-// Photodiode configuration
-#define REG_PD_SEQ1_SUB1      0x53
-#define REG_PD_SEQ2_SUB1      0x5B
+// Measurement Control
+#define REG_PPG_SINC_CFGA     0x6F
+#define REG_PPG_SINC_CFGB     0x70
+#define REG_IRQ_ENABLE        0x95
+#define REG_PPG_FREQL         0x99
+#define REG_PPG1_SUB_EN       0x9B
+#define REG_PPG_MODE1         0x9D
+#define REG_FIFO_THRESHOLD    0xCA
 
-// Control registers
-#define REG_IRQ_ENABLE        0x3F
+// Control and Status
+#define REG_CHIP_CTRL         0xEF
 #define REG_SEQ_START         0xF0
 #define REG_STATUS            0xFA
-#define REG_STATUS_SEQ        0xF5
+#define REG_STATUS_SEQ        0xF2
+#define REG_STATUS_VCSEL      0xF6
 #define REG_FIFO_LEVEL0       0xFB
-#define REG_FIFO_LEVEL1       0xFC
 #define REG_FIFOL             0xFD
 #define REG_FIFOM             0xFE
 #define REG_FIFOH             0xFF
 
 int write_reg(uint8_t reg, uint8_t val) {
     uint8_t buf[2] = { reg, val };
-    int ret = i2c_write(i2c_dev, buf, 2, AS7056_I2C_ADDR);
+    int ret = i2c_write(i2c_dev, buf, 2, AS7058_I2C_ADDR);
     if (ret != 0) {
         LOG_ERR("WRITE FAIL: reg 0x%02X = 0x%02X (err=%d)", reg, val, ret);
     } else {
@@ -71,236 +71,207 @@ int write_reg(uint8_t reg, uint8_t val) {
 }
 
 int read_reg(uint8_t reg, uint8_t *val) {
-    int ret = i2c_write_read(i2c_dev, AS7056_I2C_ADDR, &reg, 1, val, 1);
+    int ret = i2c_write_read(i2c_dev, AS7058_I2C_ADDR, &reg, 1, val, 1);
     if (ret != 0) {
         LOG_ERR("READ FAIL: reg 0x%02X (err=%d)", reg, ret);
     }
     return ret;
 }
 
-void complete_initialization_from_dump(void) {
-    LOG_INF("=== COMPLETE INITIALIZATION FROM WORKING DUMP ===");
+void perform_chip_reset(void) {
+    LOG_INF("=== PERFORMING COMPLETE CHIP RESET ===");
     
-    // Apply ALL configuration values from your working dump
+    // Software reset sequence
+    write_reg(REG_CHIP_CTRL, 0x01);  // Trigger power-on reset
+    k_msleep(500);  // Extended reset delay
+    
+    // Wait for chip to be ready
+    uint8_t status;
+    int retries = 20;
+    do {
+        k_msleep(50);
+        read_reg(0xEC, &status);  // Read SILICON_ID
+        retries--;
+    } while (status != 0x92 && retries > 0);
+    
+    if (status == 0x92) {
+        LOG_INF("Chip reset successful - Silicon ID confirmed: 0x%02X", status);
+    } else {
+        LOG_ERR("Chip reset failed - Silicon ID: 0x%02X", status);
+    }
+}
+
+void comprehensive_vcsel_disable(void) {
+    LOG_INF("=== COMPREHENSIVE VCSEL SAFETY DISABLE ===");
+    
+    // Step 1: Set VCSEL password (required for some operations)
+    write_reg(REG_VCSEL_PASSWORD, 0x57);
+    k_msleep(10);
+    
+    // Step 2: Complete VCSEL safety disable sequence
+    write_reg(REG_VCSEL_CFG, 0xFF);    // Disable ALL VCSEL safety features
+    write_reg(REG_VCSEL_MODE, 0x00);   // Force all pins to LED mode
+    write_reg(REG_LED_CFG, 0x01);      // Disable LED watchdog
+    k_msleep(100);
+    
+    // Step 3: Verify VCSEL status
+    uint8_t vcsel_status, vcsel_cfg, vcsel_mode;
+    read_reg(REG_STATUS_VCSEL, &vcsel_status);
+    read_reg(REG_VCSEL_CFG, &vcsel_cfg);
+    read_reg(REG_VCSEL_MODE, &vcsel_mode);
+    
+    LOG_INF("VCSEL Status: 0x%02X, CFG: 0x%02X, MODE: 0x%02X", 
+            vcsel_status, vcsel_cfg, vcsel_mode);
+    
+    // Step 4: Clear any VCSEL error flags by reading status registers
+    uint8_t temp;
+    read_reg(0xF7, &temp);  // STATUS_VCSEL_VSS
+    read_reg(0xF8, &temp);  // STATUS_VCSEL_VDD
+    read_reg(REG_STATUS_VCSEL, &temp);
+    read_reg(REG_STATUS, &temp);
+    
+    LOG_INF("VCSEL safety system comprehensively disabled");
+}
+
+void minimal_ppg_configuration(void) {
+    LOG_INF("=== MINIMAL PPG CONFIGURATION ===");
+    
+    // Absolute minimal configuration to get PPG working
     struct {
         uint8_t reg;
         uint8_t val;
         const char *name;
-    } config[] = {
-        // Core configuration
-        {0x10, 0x00, "CONTROL"},
-        {0x11, 0x07, "CGB_CFG"},
-        {0x12, 0x00, "INT_CFG"},
-        {0x13, 0x40, "CSXN_CFG"},
-        {0x14, 0x40, "IO_CFG"},
-        {0x15, 0xED, "REF_CFGA"},
-        {0x16, 0x06, "REF_CFGB"},
+    } minimal_config[] = {
+        // Essential clocks and references
+        {0x18, 0x03, "CLK_CFG - LF and HF oscillators only"},
+        {0x19, 0x1F, "REF_CFG1 - Essential references only"},
+        {0x1A, 0x01, "REF_CFG2 - Bypass low-pass filter"},
         
-        // Modulation configuration
-        {0x19, 0x00, "MOD_CFGA"},
-        {0x1A, 0x00, "MOD_CFGB"},
-        {0x1B, 0x16, "MOD1_CFGA"},
-        {0x1C, 0x04, "MOD1_CFGB"},
-        {0x1D, 0x27, "MOD1_CFGC"},
-        {0x1E, 0x07, "MOD1_CFGD"},
-        {0x1F, 0x1F, "MOD1_CFGE"},
-        {0x20, 0x1F, "MOD1_CFGF"},
-        {0x21, 0x06, "MOD2_CFGA"},
-        {0x22, 0x04, "MOD2_CFGB"},
-        {0x23, 0x00, "MOD2_CFGC"},
-        {0x24, 0x00, "MOD2_CFGD"},
-        {0x25, 0x00, "MOD2_CFGE"},
-        {0x26, 0x00, "MOD2_CFGF"},
+        // Power management - minimal domains
+        {0x1C, 0x07, "STANDBY_ON1 - PPG essentials only"},
+        {0x1D, 0x00, "STANDBY_ON2 - Disable ECG standby"},
+        {0x2D, 0x07, "PWR_ON - Enable PPG domains"},
+        {0x2E, 0x18, "PWR_ISO - Power isolation"},
         
-        // VCSEL and LED configuration
-        {0x28, 0x00, "VCSEL_CFG"},
-        {0x29, 0x00, "SEQ1_LED1_CURR"},
-        {0x2A, 0x1F, "SEQ2_LED1_CURR"},
-        {0x2B, 0x0C, "SEQ1_LED2_CURR"},
-        {0x2C, 0x00, "SEQ2_LED2_CURR"},
-        {0x2D, 0x00, "SEQ1_LED3_CURR"},
-        {0x2E, 0x00, "SEQ2_LED3_CURR"},
+        // PPG Modulator - simplest configuration
+        {0x39, 0x00, "PPGMOD_CFG3 - 10MHz, default timing"},
+        {0x3A, 0x80, "PPGMOD1_CFG1 - Enable MOD1, default cap"},
+        {0x3B, 0x34, "PPGMOD1_CFG2 - 4uA range, 0.625 scale"},
+        {0x3C, 0x04, "PPGMOD1_CFG3 - 4uA reference"},
         
-        // LED sequence configuration
-        {0x2F, 0x20, "LED_SEQ1_SUB12"},
-        {0x30, 0x00, "LED_SEQ1_SUB34"},
-        {0x31, 0x00, "LED_SEQ1_SUB56"},
-        {0x32, 0x00, "LED_SEQ1_SUB78"},
-        {0x33, 0x10, "LED_SEQ2_SUB12"},
-        {0x34, 0x00, "LED_SEQ2_SUB34"},
-        {0x35, 0x00, "LED_LOWVDS_WAIT"},
+        // LED configuration - minimal current
+        {0x46, 0x08, "LED1_ICTRL - Low LED current"},
+        {0x4E, 0x01, "LED_IRNG1 - 150mA range for LED1"},
+        {0x50, 0x01, "LED_SUB1 - Select LED1"},
         
-        // IRQ configuration - IMPORTANT!
-        {0x3F, 0xFF, "IRQ_ENABLE"},
+        // Photodiode - simple PD1 selection  
+        {0x5A, 0x01, "PPG1_PDSEL1 - Select PD1"},
         
-        // Sequence timing and control
-        {0x40, 0x00, "SEQ_SAMPLE"},
-        {0x41, 0x1E, "SEQ_SUB_WAIT"},
-        {0x42, 0x01, "SEQ_MODCONF"},
-        {0x43, 0x88, "SEQ_CONFIG"},
-        {0x44, 0x00, "SEQ_SAR_WAIT"},
-        {0x45, 0x0A, "SEQ_LED_INIT"},
-        {0x46, 0x3F, "SEQ_FREQL"},
-        {0x47, 0x01, "SEQ_FREQH"},
-        {0x48, 0x00, "SEQ1_FREQDIVL"},
-        {0x49, 0x00, "SEQ1_FREQDIVH"},
-        {0x4A, 0x09, "SEQ2_FREQDIVL"},
-        {0x4B, 0x00, "SEQ2_FREQDIVH"},
+        // Filter - conservative settings
+        {0x6F, 0x01, "PPG_SINC_CFGA - Dec=32, no oversampling"},
+        {0x70, 0x01, "PPG_SINC_CFGB - 4th order CIC"},
         
-        // CRITICAL: Sequence enable registers
-        {0x4C, 0x01, "MOD1_SEQ1_SUB_EN"},
-        {0x4D, 0x01, "MOD1_SEQ2_SUB_EN"},
-        {0x4E, 0x00, "MOD2_SEQ1_SUB_EN"},
-        {0x4F, 0x00, "MOD2_SEQ2_SUB_EN"},
-        
-        // Photodiode configuration
-        {0x53, 0x10, "PD_SEQ1_SUB1"},
-        {0x5B, 0x20, "PD_SEQ2_SUB1"},
-        
-        // SINC filter configuration
-        {0x61, 0x64, "SEQ1_SINC_CFGA"},
-        {0x62, 0x01, "SEQ1_SINC_CFGB"},
-        {0x63, 0x00, "SEQ1_SINC_CFGC"},
-        {0x64, 0x64, "SEQ2_SINC_CFGA"},
-        {0x65, 0x01, "SEQ2_SINC_CFGB"},
-        {0x66, 0x00, "SEQ2_SINC_CFGC"},
-        
-        // FIFO configuration
-        {0xD0, 0x0F, "FIFO_THRESHOLD"},
-        {0xD1, 0x00, "FIFO_CTRL"},
+        // Sequencer - minimal setup
+        {0x95, 0x01, "IRQ_ENABLE - FIFO threshold only"},
+        {0x99, 0xFF, "PPG_FREQL - Slow sample rate"},
+        {0x9B, 0x01, "PPG1_SUB_EN - Enable subsample 1 only"},
+        {0x9D, 0x00, "PPG_MODE1 - Single measurement"},
+        {0xCA, 0x05, "FIFO_THRESHOLD - Low threshold"},
     };
     
-    LOG_INF("Writing %d configuration registers...", ARRAY_SIZE(config));
-    
-    for (int i = 0; i < ARRAY_SIZE(config); i++) {
-        write_reg(config[i].reg, config[i].val);
-        if (i % 10 == 9) {
-            k_msleep(10); // Small delay every 10 writes
-        }
+    for (int i = 0; i < ARRAY_SIZE(minimal_config); i++) {
+        write_reg(minimal_config[i].reg, minimal_config[i].val);
+        k_msleep(10);
     }
     
-    k_msleep(50); // Let configuration settle
-    LOG_INF("Complete configuration applied");
+    k_msleep(200);
+    LOG_INF("Minimal PPG configuration complete");
 }
 
-bool start_continuous_sequence(void) {
-    LOG_INF("=== STARTING CONTINUOUS SEQUENCE ===");
+void diagnostic_register_dump(void) {
+    LOG_INF("=== DIAGNOSTIC REGISTER DUMP ===");
     
-    // Check initial status
-    uint8_t status_seq, status_main;
-    read_reg(REG_STATUS_SEQ, &status_seq);
-    read_reg(REG_STATUS, &status_main);
-    LOG_INF("Pre-start status - SEQ: 0x%02X, MAIN: 0x%02X", status_seq, status_main);
+    struct {
+        uint8_t reg;
+        const char *name;
+    } key_registers[] = {
+        {0x18, "CLK_CFG"},
+        {0x19, "REF_CFG1"}, 
+        {0x2D, "PWR_ON"},
+        {0x2E, "PWR_ISO"},
+        {0x41, "VCSEL_CFG"},
+        {0x42, "VCSEL_MODE"},
+        {0x43, "LED_CFG"},
+        {0x3A, "PPGMOD1_CFG1"},
+        {0x46, "LED1_ICTRL"},
+        {0x50, "LED_SUB1"},
+        {0x5A, "PPG1_PDSEL1"},
+        {0x9B, "PPG1_SUB_EN"},
+        {0xF0, "SEQ_START"},
+        {0xF2, "STATUS_SEQ"},
+        {0xF6, "STATUS_VCSEL"},
+        {0xFA, "STATUS"},
+    };
     
-    // Ensure sequence is stopped first
-    write_reg(REG_SEQ_START, 0x00);
-    k_msleep(100);
-    
-    // Check that critical enable bits are set
-    uint8_t seq1_en, seq2_en;
-    read_reg(REG_MOD1_SEQ1_SUB_EN, &seq1_en);
-    read_reg(REG_MOD1_SEQ2_SUB_EN, &seq2_en);
-    LOG_INF("Sequence enables - SEQ1: 0x%02X, SEQ2: 0x%02X", seq1_en, seq2_en);
-    
-    if (seq1_en != 0x01 || seq2_en != 0x01) {
-        LOG_WRN("Sequence enable registers not set correctly, fixing...");
-        write_reg(REG_MOD1_SEQ1_SUB_EN, 0x01);
-        write_reg(REG_MOD1_SEQ2_SUB_EN, 0x01);
-        k_msleep(50);
+    for (int i = 0; i < ARRAY_SIZE(key_registers); i++) {
+        uint8_t val;
+        read_reg(key_registers[i].reg, &val);
+        LOG_INF("  %s (0x%02X) = 0x%02X", 
+                key_registers[i].name, key_registers[i].reg, val);
     }
+}
+
+bool attempt_measurement_recovery(void) {
+    LOG_INF("=== ATTEMPTING MEASUREMENT RECOVERY ===");
     
-    // Start the sequence
-    LOG_INF("Starting measurement sequence...");
-    write_reg(REG_SEQ_START, 0x01);
+    // Try different approaches to clear the VCSEL error
+    
+    // Approach 1: Complete power cycle
+    LOG_INF("Approach 1: Power domain cycling");
+    write_reg(REG_PWR_ON, 0x00);      // Power down all domains
+    write_reg(REG_PWR_ISO, 0x1F);     // Isolate all domains
     k_msleep(200);
     
-    // Check sequence status after start
-    read_reg(REG_STATUS_SEQ, &status_seq);
-    read_reg(REG_STATUS, &status_main);
-    LOG_INF("Post-start status - SEQ: 0x%02X, MAIN: 0x%02X", status_seq, status_main);
+    comprehensive_vcsel_disable();     // Re-disable VCSEL safety
     
-    // Continuous restart to keep sequence running
-    for (int retry = 0; retry < 3; retry++) {
-        if (status_seq != 0x00) {
-            LOG_INF("✓ Sequence active on attempt %d (status: 0x%02X)", retry + 1, status_seq);
-            return true;
-        }
-        
-        LOG_INF("Retry %d: Restarting sequence...", retry + 1);
-        write_reg(REG_SEQ_START, 0x00);
-        k_msleep(50);
-        write_reg(REG_SEQ_START, 0x01);
-        k_msleep(200);
-        
-        read_reg(REG_STATUS_SEQ, &status_seq);
-        read_reg(REG_STATUS, &status_main);
-        LOG_INF("After retry %d - SEQ: 0x%02X, MAIN: 0x%02X", retry + 1, status_seq, status_main);
-    }
-    
-    // If still not working, try alternative sequence start methods
-    LOG_INF("Trying alternative sequence activation...");
-    
-    // Method 1: Pulse the sequence start multiple times
-    for (int i = 0; i < 5; i++) {
-        write_reg(REG_SEQ_START, 0x01);
-        k_msleep(50);
-        write_reg(REG_SEQ_START, 0x00);
-        k_msleep(50);
-    }
-    write_reg(REG_SEQ_START, 0x01);
+    write_reg(REG_PWR_ISO, 0x18);     // Release isolation
+    write_reg(REG_PWR_ON, 0x07);      // Power up PPG domains
     k_msleep(200);
     
-    read_reg(REG_STATUS_SEQ, &status_seq);
-    if (status_seq != 0x00) {
-        LOG_INF("✓ Pulse method worked! SEQ Status: 0x%02X", status_seq);
+    uint8_t status;
+    read_reg(REG_STATUS, &status);
+    if ((status & 0x20) == 0) {
+        LOG_INF("✓ Power cycling cleared VCSEL error");
         return true;
     }
     
-    LOG_WRN("Sequence activation challenging - will monitor anyway");
-    return false;
-}
-
-void enhanced_data_monitoring(void) {
-    LOG_INF("=== ENHANCED DATA MONITORING ===");
+    // Approach 2: Sequence timing adjustment
+    LOG_INF("Approach 2: Alternative timing");
+    write_reg(0x96, 0x64);  // Longer subsample wait
+    write_reg(0x98, 0x32);  // Longer LED init time
+    write_reg(REG_PPG_FREQL, 0x7F);  // Even slower sample rate
+    k_msleep(100);
     
-    for (int cycle = 0; cycle < 20; cycle++) {
-        LOG_INF("--- Enhanced Monitor Cycle %d ---", cycle + 1);
-        
-        // Read all status registers
-        uint8_t status_seq, status_main, status_led, fifo_l0, fifo_l1;
-        read_reg(REG_STATUS_SEQ, &status_seq);
-        read_reg(REG_STATUS, &status_main);
-        read_reg(0xF6, &status_led);  // STATUS_LED
-        read_reg(REG_FIFO_LEVEL0, &fifo_l0);
-        read_reg(REG_FIFO_LEVEL1, &fifo_l1);
-        
-        LOG_INF("Status: SEQ=0x%02X, MAIN=0x%02X, LED=0x%02X", 
-                status_seq, status_main, status_led);
-        LOG_INF("FIFO: L0=0x%02X, L1=0x%02X", fifo_l0, fifo_l1);
-        
-        // If sequence is idle, try to restart it
-        if (status_seq == 0x00) {
-            LOG_INF("Sequence idle - restarting...");
-            write_reg(REG_SEQ_START, 0x01);
-            k_msleep(100);
-            read_reg(REG_STATUS_SEQ, &status_seq);
-            LOG_INF("After restart: SEQ=0x%02X", status_seq);
-        }
-        
-        // Check for any FIFO data
-        if (fifo_l0 > 0 || fifo_l1 > 0) {
-            uint8_t fifol, fifom, fifoh;
-            read_reg(REG_FIFOL, &fifol);
-            read_reg(REG_FIFOM, &fifom);
-            read_reg(REG_FIFOH, &fifoh);
-            
-            uint32_t fifo_data = (fifoh << 16) | (fifom << 8) | fifol;
-            LOG_INF("✓ FIFO DATA: 0x%06X (%d) - MEASUREMENT WORKING!", 
-                    fifo_data, fifo_data);
-        }
-        
-        k_msleep(500);
+    read_reg(REG_STATUS, &status);
+    if ((status & 0x20) == 0) {
+        LOG_INF("✓ Timing adjustment cleared VCSEL error");
+        return true;
     }
+    
+    // Approach 3: LED current reduction
+    LOG_INF("Approach 3: Ultra-low LED current");
+    write_reg(REG_LED1_ICTRL, 0x02);  // Minimal LED current
+    write_reg(REG_LED_IRNG1, 0x00);   // 25mA range
+    k_msleep(100);
+    
+    read_reg(REG_STATUS, &status);
+    if ((status & 0x20) == 0) {
+        LOG_INF("✓ Low current cleared VCSEL error");
+        return true;
+    }
+    
+    LOG_WRN("All recovery approaches failed - hardware issue likely");
+    return false;
 }
 
 void main(void) {
@@ -309,25 +280,93 @@ void main(void) {
         return;
     }
 
-    LOG_INF("AS7056 Enhanced Sequence Control");
-    LOG_INF("===============================");
+    LOG_INF("AS7058 COMPREHENSIVE DIAGNOSTIC AND RECOVERY");
+    LOG_INF("===============================================");
     
-    // Step 1: Apply complete configuration from working dump
-    complete_initialization_from_dump();
+    // Step 1: Complete chip reset to clean slate
+    perform_chip_reset();
     
-    // Step 2: Start continuous sequence with enhanced retry logic
-    bool seq_started = start_continuous_sequence();
+    // Step 2: Comprehensive VCSEL safety disable
+    comprehensive_vcsel_disable();
     
-    // Step 3: Enhanced monitoring with automatic restart
-    enhanced_data_monitoring();
+    // Step 3: Apply minimal PPG configuration
+    minimal_ppg_configuration();
     
-    LOG_INF("Enhanced monitoring complete");
+    // Step 4: Diagnostic register dump
+    diagnostic_register_dump();
     
-    if (seq_started) {
-        LOG_INF("✓ Sequence was successfully activated at some point");
-    } else {
-        LOG_WRN("⚠️  Sequence activation was inconsistent");
-        LOG_INF("This may be normal for single-shot or triggered mode");
-        LOG_INF("If FIFO data appeared, the sensor is working correctly");
+    // Step 5: Check initial status
+    uint8_t initial_status, vcsel_status;
+    read_reg(REG_STATUS, &initial_status);
+    read_reg(REG_STATUS_VCSEL, &vcsel_status);
+    LOG_INF("Initial status - MAIN: 0x%02X, VCSEL: 0x%02X", initial_status, vcsel_status);
+    
+    // Step 6: Attempt recovery if VCSEL error persists
+    bool recovery_success = true;
+    if (initial_status & 0x20) {
+        LOG_WRN("VCSEL error present - attempting recovery");
+        recovery_success = attempt_measurement_recovery();
     }
+    
+    // Step 7: Try to start measurement
+    LOG_INF("=== ATTEMPTING PPG MEASUREMENT START ===");
+    write_reg(REG_SEQ_START, 0x01);
+    k_msleep(500);  // Longer wait for first measurement
+    
+    // Step 8: Monitor for a few cycles
+    for (int i = 0; i < 10; i++) {
+        uint8_t seq_status, main_status, vcsel_stat, fifo_level;
+        read_reg(REG_STATUS_SEQ, &seq_status);
+        read_reg(REG_STATUS, &main_status);
+        read_reg(REG_STATUS_VCSEL, &vcsel_stat);
+        read_reg(REG_FIFO_LEVEL0, &fifo_level);
+        
+        LOG_INF("Cycle %d: SEQ=0x%02X, MAIN=0x%02X, VCSEL=0x%02X, FIFO=%d", 
+                i+1, seq_status, main_status, vcsel_stat, fifo_level);
+        
+        // Check for FIFO data
+        if (fifo_level > 0) {
+            uint8_t fifol, fifom, fifoh;
+            read_reg(REG_FIFOL, &fifol);
+            read_reg(REG_FIFOM, &fifom);
+            read_reg(REG_FIFOH, &fifoh);
+            
+            uint32_t adc_data = ((fifoh << 16) | (fifom << 8) | fifol) >> 4;
+            LOG_INF("✓ PPG DATA: 0x%05X (%d) - MEASUREMENT SUCCESS!", adc_data, adc_data);
+        }
+        
+        // Restart sequence if idle
+        if (seq_status == 0x00) {
+            write_reg(REG_SEQ_START, 0x01);
+        }
+        
+        k_msleep(1000);
+    }
+    
+    // Final status report
+    uint8_t final_main, final_vcsel;
+    read_reg(REG_STATUS, &final_main);
+    read_reg(REG_STATUS_VCSEL, &final_vcsel);
+    
+    LOG_INF("=== FINAL DIAGNOSTIC RESULTS ===");
+    LOG_INF("Final Status - MAIN: 0x%02X, VCSEL: 0x%02X", final_main, final_vcsel);
+    
+    if ((final_main & 0x20) == 0) {
+        LOG_INF("✓ SUCCESS: VCSEL error resolved - AS7058 operational");
+    } else {
+        LOG_ERR("❌ FAILURE: VCSEL error persists (0x%02X)", final_vcsel);
+        LOG_ERR("Hardware issues detected:");
+        if (final_vcsel & 0x08) LOG_ERR("  - VCSEL short to VDD detected");
+        if (final_vcsel & 0x04) LOG_ERR("  - VCSEL short to VSS detected");
+        if (final_vcsel & 0x10) LOG_ERR("  - LED watchdog timeout");
+        if (final_vcsel & 0x03) LOG_ERR("  - VCSEL analog watchdog error");
+        
+        LOG_ERR("Recommendations:");
+        LOG_ERR("  1. Check LED connections (shorts, open circuits)");
+        LOG_ERR("  2. Verify power supply voltages (1.8V, LED supply)");
+        LOG_ERR("  3. Check I2C communication integrity");
+        LOG_ERR("  4. Inspect PCB layout for ground loops or noise");
+    }
+    
+    LOG_INF("AS7058 comprehensive diagnostic complete");
 }
