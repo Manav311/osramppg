@@ -12,3 +12,16 @@ FILE(GLOB app_sources
 target_sources(app PRIVATE ${app_sources})
 
 
+
+# --- Link prebuilt .a file ---
+set(MYLIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/libas7058a_hrm_b0.a)
+
+add_library(mylib STATIC IMPORTED)
+set_target_properties(mylib PROPERTIES IMPORTED_LOCATION ${MYLIB_PATH})
+
+# If you also have headers:
+# set_target_properties(mylib PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
+#     ${CMAKE_CURRENT_SOURCE_DIR}/include
+# )
+
+target_link_libraries(app PRIVATE mylib)

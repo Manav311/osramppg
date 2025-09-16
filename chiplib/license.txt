@@ -1,0 +1,66 @@
+Copyright © 2022 ams-OSRAM AG
+All rights are reserved.
+
+
+IMPORTANT – PLEASE READ THIS LICENSE AGREEMENT (THE “AGREEMENT”) CAREFULLY
+BEFORE DOWNLOADING, RUNNING, INSTALLING, DISPLAYING AND/OR OTHERWISE USING
+THIS SOFTWARE. IF YOU DO NOT AGREE TO OR IF YOU DO NOT FULFILL THE CONDITIONS
+OF THIS AGREEMENT, YOU MUST NOT DOWNLOAD, RUN, INSTALL, DISPLAY AND/OR
+OTHERWISE USE THIS SOFTWARE.
+
+This software is referred to as “SOFTWARE”.
+ams-OSRAM AG is hereinafter referred to as “LICENSOR”. You are hereinafter
+referred to as “LICENSEE”. LICENSOR and LICENSEE are hereinafter referred to
+as “PARTY”, respectively “PARTIES”.
+
+This SOFTWARE is not dedicated for the use and/or the receipt by consumers.
+Therefore, it is clarified that LICENSEE shall only be a company within the
+meaning of § 1 UGB (Austrian Commercial Code). You warrant and represent that
+you are duly authorized to accept the terms of this AGREEMENT on behalf of
+LICENSEE.
+
+LICENSOR grants to LICENSEE a limited, non-exclusive license to run, install,
+display and/or otherwise use this SOFTWARE only in conjunction with the
+respectively dedicated product, evaluation kit or demo board of LICENSEE or its
+affiliates (ams OSRAM group). LICENSOR may revoke this license at any time in
+case of a breach of this AGREEMENT by LICENSEE.
+
+LICENSEE shall not copy, change, reverse engineer, reverse compile, decompile,
+decrypt or disassemble the SOFTWARE, in whole or in part, except to the extent
+as expressly authorized by LICENSOR or as set out in applicable compulsory law
+(e.g. § 40d and § 40e of the Austrian Copyright Act).
+
+THIS SOFTWARE IS PROVIDED “AS IS”. ANY EXPRESS OR IMPLIED WARRANTIES INCLUDING,
+BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY OR CONSEQUENTIAL DAMAGES OR
+CLAIMS (INCLUDING, BUT NOT LIMITED TO THE PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES, LOSS OF USE, DATA OR PROFITS, OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND BASED ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY OR TORT (INCLUDING NEGLIGENCE) OR OTHERWISE ARISING IN ANY WAY OUT OF
+OR LINKED TO THE USE – OR ANY INABILITY TO USE – THE SOFTWARE OR LINKED TO THIS
+AGREEMENT, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. INSOFAR AS
+LICENSOR SHOULD BE LIABLE ACCORDING TO THE PREVIOUS PROVISION, THE MAXIMUM
+OVERALL LIABILITY FOR LICENSOR SHALL BE LIMITED TO € 1 (one). THIS EXCLUSION
+AND LIMITATION OF LIABILITY SHALL NOT APPLY FOR CASES OF WILFULL INTENT OR
+BLATANT GROSS NEGLIGENCE OF LICENSOR OR IF AND ONLY TO THE EXTENT SUCH
+EXCLUSION/LIMITATION IS NOT PERMISSIBLE ACCORDING TO APPLICABLE COMPULSORY
+STATUTORY LAW OR JURISDICTION. LICENSEE WILL INDEMNIFY AND HOLD LICENSOR FULLY
+HARMLESS AGAINST ANY CLAIMS, DEMANDS AND DAMAGES ARISING OUT OF OR IN
+CONNECTION WITH A BREACH OF ANY OF ITS OBLIGATIONS UNDER THIS AGREEMENT.
+
+LICENSEE agrees and acknowledges that LICENSOR may but shall not be obliged to
+provide any updates for this SOFTWARE.
+
+This AGREEMENT is made under and will be construed according to the laws of
+Austria, its conflict of laws provisions and the UN law governing Contracts for
+the International Sale of Goods (CISG) being excluded. Any disputes arising out
+of or in connection with this AGREEMENT shall be settled in compliance with the
+Rules of Conciliation and Arbitration of the International Chamber of Commerce
+(ICC) by one arbitrator appointed according to said rules. The arbitration
+proceedings shall be held in Vienna, Austria. The language of the arbitration
+shall be English.
+
+If there is a separate agreement between the PARTIES with respect to this
+SOFTWARE in place, in case of contradictions, the stipulations of such separate
+agreement shall precede.
