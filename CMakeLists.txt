@@ -7,7 +7,6 @@ project(max30101)
 FILE(GLOB app_sources 
     src/*.c
     src/startup.c
-    src/as7058_bioz_measurement.c
    
 )
 target_sources(app PRIVATE ${app_sources})

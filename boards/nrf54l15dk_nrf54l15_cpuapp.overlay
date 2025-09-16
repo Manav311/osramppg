@@ -9,6 +9,7 @@
 };
 
 
+
 &pinctrl {
 	/omit-if-no-ref/ i2c21_default: i2c21_default {
 		group1 {
