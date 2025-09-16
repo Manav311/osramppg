@@ -1,5 +1,9 @@
 {
     "files.associations": {
-        "log.h": "c"
+        "log.h": "c",
+        "cstdint": "c",
+        "vital_signs_accelerometer.h": "c",
+        "as7058_typedefs.h": "c",
+        "as7058a_hrm_b0.h": "c"
     }
 }

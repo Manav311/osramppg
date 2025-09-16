@@ -4,5 +4,12 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(max30101)
 
-FILE(GLOB app_sources src/*.c)
+FILE(GLOB app_sources 
+    src/*.c
+    src/startup.c
+    src/as7058_bioz_measurement.c
+   
+)
 target_sources(app PRIVATE ${app_sources})
+
+

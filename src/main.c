@@ -7,6 +7,14 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/logging/log.h>
 
+#include "as7058_bioz_measurement.h"
+#include "as7058_extract.h"
+#include "as7058_interface.h"
+#include "as7058_osal_chiplib.h"
+#include "as7058_typedefs.h"
+#include "error_codes.h"
+#include "std_inc.h"
+
 LOG_MODULE_REGISTER(as7058_ppg, LOG_LEVEL_INF);
 
 const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c21));
@@ -316,6 +324,13 @@ int main(void) {
     // Initialize AS7058 with optimized settings
     initialize_as7058_optimized();
     
+
+
+    int ppr = as7058_bioz_stop();
+    if (ppr != 0) {
+        LOG_ERR("Failed to start AS7058 bioz measurement");
+        return 1;
+    }
     // Start PPG measurement
     start_ppg_measurement();
     
