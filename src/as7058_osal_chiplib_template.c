@@ -69,7 +69,7 @@ const struct device *i2c_dev1 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 static void interrupt_callback()
 {
     err_code_t result;
-    uint8_t pin_state = 0;
+    uint8_t pin_state = 1;
 
     if (NULL != g_device_config.callback) {
         do {

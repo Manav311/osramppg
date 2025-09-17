@@ -12,6 +12,7 @@
         "compare": "c",
         "type_traits": "c",
         "typeinfo": "c",
-        "ring_buffer.h": "c"
+        "ring_buffer.h": "c",
+        "string.h": "c"
     }
 }
