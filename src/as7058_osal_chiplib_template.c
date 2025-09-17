@@ -12,6 +12,14 @@ which can be called by the AS7058 Chip Library.
 All code lines which start with '// TODO' must be replaced by your own implementations.
 */
 
+
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/sensor.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/ring_buffer.h>
+
 /******************************************************************************
  *                                 INCLUDES                                   *
  ******************************************************************************/

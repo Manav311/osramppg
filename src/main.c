@@ -8,6 +8,8 @@
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/ring_buffer.h>
+#include <zephyr/drivers/gpio.h>
+#include <hal/nrf_gpio.h>
 
 // AS7058 chiplib includes (assuming these are available in your environment)
 #include "as7058_bioz_measurement.h"
@@ -25,6 +27,14 @@ LOG_MODULE_REGISTER(as7058_hrm_system, LOG_LEVEL_INF);
 
 // Device configuration
 const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c21));
+#define AS7058_NODE                   DT_ALIAS(as7058interrupt)
+
+#define LISDH12_NODE                   DT_ALIAS(lis2dh12interrupt)  
+
+
+struct gpio_dt_spec as7058_sensor_spec = GPIO_DT_SPEC_GET(AS7058_NODE, gpios); // Blue LED spec
+struct gpio_dt_spec lisdh12_sensor_spec = GPIO_DT_SPEC_GET(LISDH12_NODE, gpios); // Red LED spec
+
 
 #define AS7058_I2C_ADDR 0x55
 #define LIS12DH_I2C_ADDR 0x19

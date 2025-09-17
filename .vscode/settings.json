@@ -4,6 +4,8 @@
         "cstdint": "c",
         "vital_signs_accelerometer.h": "c",
         "as7058_typedefs.h": "c",
-        "as7058a_hrm_b0.h": "c"
+        "as7058a_hrm_b0.h": "c",
+        "i2c.h": "c",
+        "error_codes.h": "c"
     }
 }
