@@ -295,37 +295,37 @@ err_code_t as7058_shutdown(void)
             result = as7058_ifce_reset_chip();
         }
     } else {
-         printk("as7058_shutdown: Entering else block, already uninitialized");
+         //printk("as7058_shutdown: Entering else block, already uninitialized");
         result = ERR_SUCCESS;
     }
 
     result_agc = agc_shutdown();
     if (ERR_SUCCESS == result) {
-        printk("as7058_shutdown: Entering else block, already uninitialized");
+       // printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_agc;
     }
 
     result_eda_scaling = as7058_eda_scaling_shutdown();
     if (ERR_SUCCESS == result) {
-        printk("as7058_shutdown: Entering else block, already uninitialized");
+        //printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_eda_scaling;
     }
 
     result_bioz = as7058_bioz_shutdown();
     if (ERR_SUCCESS == result) {
-        printk("as7058_shutdown: Entering else block, already uninitialized");
+       // printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_bioz;
     }
 
     result_pd_offset_calibration = as7058_pd_offset_calibration_shutdown();
     if (ERR_SUCCESS == result) {
-        printk("as7058_shutdown: Entering else block, already uninitialized");
+       // printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_pd_offset_calibration;
     }
 
     result_osal = as7058_osal_shutdown();
     if (ERR_SUCCESS == result) {
-        printk("as7058_shutdown: Entering else block, already uninitialized");
+       // printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_osal;
     }
 
