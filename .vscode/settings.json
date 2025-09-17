@@ -6,6 +6,11 @@
         "as7058_typedefs.h": "c",
         "as7058a_hrm_b0.h": "c",
         "i2c.h": "c",
-        "error_codes.h": "c"
+        "error_codes.h": "c",
+        "device.h": "c",
+        "sensor.h": "c",
+        "compare": "c",
+        "type_traits": "c",
+        "typeinfo": "c"
     }
 }

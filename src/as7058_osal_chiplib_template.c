@@ -19,6 +19,8 @@ All code lines which start with '// TODO' must be replaced by your own implement
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/ring_buffer.h>
+#include <zephyr/drivers/gpio.h>
+#include <hal/nrf_gpio.h>
 
 /******************************************************************************
  *                                 INCLUDES                                   *
@@ -47,8 +49,17 @@ static const uint8_t l_i2c_address = 0x19;
 
 
 
+
+#define AS7058_NODE                   DT_ALIAS(as7058interrupt)
+
+#define LISDH12_NODE                   DT_ALIAS(lis2dh12interrupt)  
+
+struct gpio_dt_spec as7058_sensor_spec1 = GPIO_DT_SPEC_GET(AS7058_NODE, gpios); // Blue LED spec
+
 /*! Create internal instance of the device configuration */
 static struct device_config g_device_config;
+
+const struct device *i2c_dev1 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 
 /******************************************************************************
  *                               LOCAL FUNCTIONS                              *
@@ -67,7 +78,7 @@ static void interrupt_callback()
 
             /* Read the pin state again because it could be high in meanwhile again */
             if (ERR_SUCCESS == result) {
-                // TODO result = get_int_pin_state(&pin_state);
+                 result = get_int_pin_state(&pin_state);
             }
 
         } while ((ERR_SUCCESS == result) && pin_state);
@@ -82,60 +93,60 @@ err_code_t as7058_osal_initialize(const char *p_interface_desc)
 {
     err_code_t result = ERR_SUCCESS;
 
-    /* Shutdown OSAL interface in case there is one already opened */
-    if (g_device_config.init_done) {
+
+     if (!device_is_ready(i2c_dev1)) {
+
         as7058_osal_shutdown();
+        /* handle error */
     }
+    g_device_config.init_done = true;
 
-    /* Configure I2C */
-    // TODO if ((ERR_SUCCESS == result) && (RETURN_CODE_OK != i2c_init())
-    {
-        result = ERR_SYSTEM_CONFIG;
-    }
 
-    /* Configure interrupt pin: Triggering on rising edge, register interrupt_callback */
-    // TODO if ((ERR_SUCCESS == result) && (RETURN_CODE_OK != int_pin_init(TRIG_RISING, interrupt_callback))
-    {
-        result = ERR_SYSTEM_CONFIG;
-    }
-
-    if (ERR_SUCCESS == result) {
-        g_device_config.init_done = TRUE;
-    } else {
-        as7058_osal_shutdown();
-    }
 
     return result;
 }
 
-err_code_t as7058_osal_write_registers(uint8_t address, uint16_t number, const uint8_t *p_values)
+err_code_t as7058_osal_write_registers(uint8_t address,
+                                      uint16_t number,
+                                      const uint8_t *p_values)
 {
-    if (FALSE == g_device_config.init_done) {
+    if (false == g_device_config.init_done) {
         return ERR_PERMISSION;
     }
 
-    M_CHECK_NULL_POINTER(p_values);
+    if (p_values == NULL) {
+        return ERR_POINTER;
+    }
 
-    /* Call the platform specifc i2c transmit function */
-    // TODO if (RETURN_CODE_OK != i2c_write(g_i2c_address, address, number, p_values)
-    {
+    /* Build [reg + data] buffer */
+    uint8_t buf[number + 1];
+    buf[0] = address;
+    memcpy(&buf[1], p_values, number);
+
+    int ret = i2c_write(i2c_dev1, buf, number + 1, g_i2c_address);
+    if (ret < 0) {
         return ERR_DATA_TRANSFER;
     }
 
     return ERR_SUCCESS;
 }
 
+
 err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t *p_values)
 {
-    if (FALSE == g_device_config.init_done) {
+    if (false == g_device_config.init_done) {
         return ERR_PERMISSION;
     }
+    if (p_values == NULL) {
+        return ERR_POINTER;
+    }
+    if (!device_is_ready(i2c_dev1)) {
+        return ERR_DATA_TRANSFER;
+    }
 
-    M_CHECK_NULL_POINTER(p_values);
-
-    /* Call the platform specifc i2c receive function */
-    // TODO if (RETURN_CODE_OK != i2c_read(g_i2c_address, address, number, p_values)
-    {
+    /* Repeated-start: write 1 byte (reg addr), then read `number` bytes */
+    int ret = i2c_write_read(i2c_dev1, g_i2c_address, &address, 1, p_values, number);
+    if (ret < 0) {
         return ERR_DATA_TRANSFER;
     }
 
