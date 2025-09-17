@@ -11,6 +11,7 @@
         "sensor.h": "c",
         "compare": "c",
         "type_traits": "c",
-        "typeinfo": "c"
+        "typeinfo": "c",
+        "ring_buffer.h": "c"
     }
 }
