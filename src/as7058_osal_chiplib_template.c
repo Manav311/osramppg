@@ -35,6 +35,9 @@ struct device_config {
 
 /*! I2C address of the AS7058 */
 static const uint8_t g_i2c_address = 0x55;
+static const uint8_t l_i2c_address = 0x19;
+
+
 
 /*! Create internal instance of the device configuration */
 static struct device_config g_device_config;

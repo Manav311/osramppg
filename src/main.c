@@ -27,6 +27,7 @@ LOG_MODULE_REGISTER(as7058_hrm_system, LOG_LEVEL_INF);
 const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 
 #define AS7058_I2C_ADDR 0x55
+#define LIS12DH_I2C_ADDR 0x19
 
 // Accelerometer configuration
 #define ACC_SAMPLE_PERIOD_US 40000
