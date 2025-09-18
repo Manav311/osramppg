@@ -151,7 +151,7 @@ int main(int argc, char *argv[])
      * OSAL-specific interface string. For the Windows OSAL that is used by this sample code, this string needs to
      * contain the serial port the AS7058A EVK is connected to, prefixed by "COM:". Assuming that the AS7058A EVK is
      * connected to serial port COM7, the interface string needs to be "COM:COM7". */
-    err_code_t result = as7058_initialize(as7058_callback, NULL, NULL, p_interface_str);
+    err_code_t result = as7058_initialize(as7058_callback, NULL, NULL, NULL);
     if (result != ERR_SUCCESS) {
         printk("as7058_initialize returned error %d.\n", result);
         goto ERROR;
