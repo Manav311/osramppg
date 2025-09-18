@@ -1,18 +1,21 @@
 // To get started, press Ctrl+Space to bring up the completion menu and view the available nodes.
 // For more help, browse the DeviceTree documentation at https://docs.zephyrproject.org/latest/guides/dts/index.html
 / {
-    gpio_outputs {
+   
+
+
+    buttons{
         compatible = "gpio-keys";
         i2c_interrupt_pin: i2c_interrupt_pin {
-            gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
-            label = "I2C Interrupt Pin";
-        };
-
+			gpios = <&gpio1 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Push button switch 0";
+		};
         i2c_interrupt_pin2: i2c_interrupt_pin2 {
-            gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
-            label = "I2C Interrupt Pin 1";
-        };
+			gpios = <&gpio1 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Sleep/Wakeup Pin";
+		};
     };
+
 
       aliases{
 

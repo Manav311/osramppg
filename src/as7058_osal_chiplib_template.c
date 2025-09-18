@@ -29,6 +29,8 @@ All code lines which start with '// TODO' must be replaced by your own implement
 #include "as7058_osal_chiplib.h"
 #include "error_codes.h"
 
+
+
 /******************************************************************************
  *                                DEFINITIONS                                 *
  ******************************************************************************/
@@ -45,16 +47,20 @@ struct device_config {
 
 /*! I2C address of the AS7058 */
 static const uint8_t g_i2c_address = 0x55;
-static const uint8_t l_i2c_address = 0x19;
-
-
 
 
 #define AS7058_NODE                   DT_ALIAS(as7058interrupt)
 
 #define LISDH12_NODE                   DT_ALIAS(lis2dh12interrupt)  
 
-struct gpio_dt_spec as7058_sensor_spec1 = GPIO_DT_SPEC_GET(AS7058_NODE, gpios); // Blue LED spec
+
+
+struct gpio_dt_spec as7058_sensor_spec = GPIO_DT_SPEC_GET(AS7058_NODE, gpios); // Blue LED spec
+struct gpio_dt_spec lisdh12_sensor_spec = GPIO_DT_SPEC_GET(LISDH12_NODE, gpios); // Red LED spec
+
+// Add this near the top with other definitions
+static struct gpio_callback as7058_cb_data;
+//static K_SEM_DEFINE(as7058_data_ready_sem, 0, 1);
 
 /*! Create internal instance of the device configuration */
 static struct device_config g_device_config;
@@ -64,6 +70,15 @@ const struct device *i2c_dev1 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 /******************************************************************************
  *                               LOCAL FUNCTIONS                              *
  ******************************************************************************/
+
+
+ void as7058_interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+    // Give the semaphore to unblock the data processing thread
+    //k_sem_give(&as7058_data_ready_sem);
+    printk("as7058_interrupt_handler called \n");
+}
+
 
 /*! Interrupt service routine of the interrupt pin */
 static void interrupt_callback()
@@ -92,6 +107,31 @@ static void interrupt_callback()
 err_code_t as7058_osal_initialize(const char *p_interface_desc)
 {
     err_code_t result = ERR_SUCCESS;
+
+
+    int ret;
+
+    if (!gpio_is_ready_dt(&as7058_sensor_spec)) {
+        printk("Error: as7058 interrupt GPIO device not ready\n");
+        return -1;
+    }
+
+    ret = gpio_pin_configure_dt(&as7058_sensor_spec, GPIO_INPUT);
+    if (ret != 0) {
+        printk("Error %d: failed to configure interrupt pin\n", ret);
+        return -1;
+    }
+    
+    // Setup the callback
+    gpio_init_callback(&as7058_cb_data, as7058_interrupt_handler, BIT(as7058_sensor_spec.pin));
+    gpio_add_callback(as7058_sensor_spec.port, &as7058_cb_data);
+
+    // Enable the interrupt
+    ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_TO_ACTIVE);
+    if (ret != 0) {
+        printk("Error %d: failed to configure interrupt\n", ret);
+        return -1;
+    }
 
 
      if (!device_is_ready(i2c_dev1)) {
