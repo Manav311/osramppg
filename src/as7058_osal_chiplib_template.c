@@ -72,29 +72,38 @@ const struct device *i2c_dev1 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
  ******************************************************************************/
 
 
- void as7058_interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+void as7058_interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-    // Give the semaphore to unblock the data processing thread
-    //k_sem_give(&as7058_data_ready_sem);
-   // printk("as7058_interrupt_handler called \n");
 
+    static uint32_t interrupt_count = 0;
+    interrupt_count++;
+    
+    printk("AS7058 interrupt #%u triggered\n", interrupt_count);
+
+    // Add safety check
+    if (g_device_config.callback == NULL) {
+        printk("Warning: AS7058 callback is NULL\n");
+        return;
+    }
+    
     err_code_t result;
-    uint8_t pin_state = 1;
 
-    if (NULL != g_device_config.callback) {
-        do {
-            /* Calls the ChipLib callback function registered by as7058_osal_register_int_handler */
-            result = g_device_config.callback();
-
-            /* Read the pin state again because it could be high in meanwhile again */
-            if (ERR_SUCCESS == result) {
-                 result = gpio_pin_get_dt(&as7058_sensor_spec);
-            }
-
-        } while ((ERR_SUCCESS == result) && pin_state);
+    // Call the callback once - don't loop on error
+    result = g_device_config.callback();
+    
+    if (result != ERR_SUCCESS) {
+        printk("AS7058 callback returned error: %d\n", result);
+        return;  // Exit immediately on error - don't try to read pin
+    }
+    
+    // Only check pin state if callback succeeded
+    // Use the interrupt pin state from the callback parameter instead
+    // The 'pins' parameter tells us which pin triggered the interrupt
+    if (pins & BIT(as7058_sensor_spec.pin)) {
+        // Pin is still active, but don't loop - let the next interrupt handle it
+        printk("AS7058 interrupt still active\n");
     }
 }
-
 
 /*! Interrupt service routine of the interrupt pin */
 
@@ -104,53 +113,38 @@ const struct device *i2c_dev1 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 
 err_code_t as7058_osal_initialize(const char *p_interface_desc)
 {
+   
+
     err_code_t result = ERR_SUCCESS;
 
-   /* Shutdown OSAL interface in case there is one already opened */
     if (g_device_config.init_done) {
         as7058_osal_shutdown();
     }
 
-    int ret;
-
-
     if (!device_is_ready(i2c_dev1)) {
-
-        result = ERR_SYSTEM_CONFIG;
-        /* handle error */
+        return ERR_SYSTEM_CONFIG;
     }
 
     if (!gpio_is_ready_dt(&as7058_sensor_spec)) {
         printk("Error: as7058 interrupt GPIO device not ready\n");
-        result = ERR_SYSTEM_CONFIG;
+        return ERR_SYSTEM_CONFIG;
     }
 
-    ret = gpio_pin_configure_dt(&as7058_sensor_spec, GPIO_INPUT);
+    int ret = gpio_pin_configure_dt(&as7058_sensor_spec, GPIO_INPUT);
     if (ret != 0) {
         printk("Error %d: failed to configure interrupt pin\n", ret);
-        result = ERR_SYSTEM_CONFIG;
+        return ERR_SYSTEM_CONFIG;
     }
     
-    // Setup the callback
+    // Setup callback but DON'T enable interrupt yet
     gpio_init_callback(&as7058_cb_data, as7058_interrupt_handler, BIT(as7058_sensor_spec.pin));
     gpio_add_callback(as7058_sensor_spec.port, &as7058_cb_data);
 
-    // Enable the interrupt
-    ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_RISING);
-    if (ret != 0) {
-        printk("Error %d: failed to configure interrupt\n", ret);
-        result = ERR_SYSTEM_CONFIG;
-    }
-
-
-    if (ERR_SUCCESS == result) {
-        g_device_config.init_done = TRUE;
-    } else {
-        as7058_osal_shutdown();
-    }
-
-
-    return result;
+    // Explicitly disable interrupt initially
+    gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_DISABLE);
+    
+    g_device_config.init_done = TRUE;
+    return ERR_SUCCESS;
 }
 
 err_code_t as7058_osal_write_registers(uint8_t address,
@@ -201,9 +195,37 @@ err_code_t as7058_osal_register_int_handler(as7058_osal_interrupt_t callback_fun
     }
 
     g_device_config.callback = callback_function;
-
+    
+    // Still don't enable interrupt here - wait for measurement to start
     return ERR_SUCCESS;
 }
+// Add this function to as7058_osal_chiplib.c
+err_code_t as7058_osal_enable_interrupt(void)
+{
+    if (FALSE == g_device_config.init_done) {
+        return ERR_PERMISSION;
+    }
+    
+    if (g_device_config.callback == NULL) {
+        return ERR_CONFIG;
+    }
+    
+    int ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_RISING);
+    if (ret != 0) {
+        printk("Error %d: failed to enable AS7058 interrupt\n", ret);
+        return ERR_SYSTEM_CONFIG;
+    }
+    
+    printk("AS7058 interrupt enabled\n");
+    return ERR_SUCCESS;
+}
+
+err_code_t as7058_osal_disable_interrupt(void)
+{
+    gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_DISABLE);
+    return ERR_SUCCESS;
+}
+
 
 err_code_t as7058_osal_shutdown(void)
 {
@@ -212,8 +234,8 @@ err_code_t as7058_osal_shutdown(void)
     /* Deactivate interrupt pin */
     // TODO int_pin_shutdown();
 
-    gpio_pin_interrupt_configure_dt(&as7058_sensor_spec,
-                                               GPIO_INT_DISABLE);
+    // gpio_pin_interrupt_configure_dt(&as7058_sensor_spec,
+    //                                            GPIO_INT_DISABLE);
 
     /* Disable I2C */
     // TODO i2c_shutdown();

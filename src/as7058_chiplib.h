@@ -209,6 +209,8 @@ err_code_t as7058_start_measurement(as7058_meas_mode_t mode);
  */
 err_code_t as7058_stop_measurement(void);
 
+err_code_t as7058_get_debug_state(uint8_t *p_lib_state, uint8_t *p_is_meas_running);
+
 /*!
  * \brief Requests the version information.
  *

@@ -164,6 +164,25 @@ int main(int argc, char *argv[])
         goto ERROR;
     }
 
+    // Add this right after as7058_initialize() in your main function
+uint8_t chip_id = 0;
+result = as7058_read_register(AS7058_REGADDR_SILICON_ID, &chip_id);
+if (result == ERR_SUCCESS) {
+    printk("AS7058 Silicon ID: 0x%02X (expected: 0x%02X)\n", chip_id, AS7058_SILICON_ID);
+} else {
+    printk("Failed to read AS7058 Silicon ID, error: %d\n", result);
+}
+
+// Also test a simple register write/read
+uint8_t test_val = 0x55;
+result = as7058_write_register(AS7058_REGADDR_GPIO_CFG1, test_val);
+if (result == ERR_SUCCESS) {
+    uint8_t read_val = 0;
+    result = as7058_read_register(AS7058_REGADDR_GPIO_CFG1, &read_val);
+    if (result == ERR_SUCCESS) {
+        printk("Register test: wrote 0x%02X, read 0x%02X\n", test_val, read_val);
+    }
+}
     /* Initialize the Accelerometer driver. For this sample code, the argument of this function is not of relevance and
      * can be set to NULL. */
     result = vs_acc_initialize(NULL);
@@ -476,6 +495,24 @@ int main(int argc, char *argv[])
         .threshold_min = 250000,
         .threshold_max = 770000,
     };
+
+
+    // Add after all register configurations in main()
+uint16_t fifo_threshold;
+result = as7058_ifce_get_fifo_threshold(&fifo_threshold);
+if (result == ERR_SUCCESS) {
+    printk("FIFO threshold configured to: %u\n", fifo_threshold);
+} else {
+    printk("Failed to read FIFO threshold: %d\n", result);
+}
+
+as7058_interrupt_t enabled_irqs;
+result = as7058_ifce_get_interrupt_enable(&enabled_irqs);
+if (result == ERR_SUCCESS) {
+    printk("Enabled IRQs - FIFO threshold: %u, FIFO overflow: %u\n", 
+           enabled_irqs.fifo_threshold, enabled_irqs.fifo_overflow);
+}
+
     result = as7058_set_agc_config(&agc_config, 1);
     if (result != ERR_SUCCESS) {
         printk("as7058_set_agc_config returned error %d.\n", result);
@@ -529,13 +566,38 @@ int main(int argc, char *argv[])
         goto ERROR;
     }
 
-    /* Start data acquisition in the AS7058 Chip Library. For heart rate monitoring, PPG measurements are required, i.e.
-     * AS7058_MEAS_MODE_NORMAL is to be used. */
-    result = as7058_start_measurement(AS7058_MEAS_MODE_NORMAL);
-    if (result != ERR_SUCCESS) {
-        printk("as7058_start_measurement returned error %d.\n", result);
-        goto ERROR;
-    }
+    // Add this test right after vs_acc_start()
+vs_acc_data_t test_acc_data[5];
+uint8_t num_test_acc = 5;
+result = vs_acc_get_data(test_acc_data, &num_test_acc);
+printk("Accelerometer test: got %u samples, result: %d\n", num_test_acc, result);
+
+
+// Right before as7058_start_measurement()
+uint8_t lib_state, is_meas_running;
+as7058_get_debug_state(&lib_state, &is_meas_running);
+printk("About to start measurement. Current state: lib_state=%d, is_meas_running=%d\n", 
+       lib_state, is_meas_running);
+
+result = as7058_start_measurement(AS7058_MEAS_MODE_NORMAL);
+if (result != ERR_SUCCESS) {
+    printk("as7058_start_measurement failed: %d\n", result);
+    goto ERROR;
+}
+
+// Check state after starting
+as7058_get_debug_state(&lib_state, &is_meas_running);
+printk("Measurement started. New state: lib_state=%d, is_meas_running=%d\n", 
+       lib_state, is_meas_running);
+
+    // 2. THEN enable interrupts
+result = as7058_osal_enable_interrupt();
+if (result != ERR_SUCCESS) {
+    printk("Failed to enable AS7058 interrupt: %d\n", result);
+    goto ERROR;
+}
+
+printk("Measurement and interrupts started successfully\n");
 
     /**************************************************************************
      *                           DURING MEASUREMENT                           *
@@ -545,9 +607,11 @@ int main(int argc, char *argv[])
         "\nPress Ctrl+C to stop the measurement. The first output will be generated in approximately 10 seconds.\n\n");
 
     uint32_t output_counter = 0;
+    
+uint32_t loop_counter = 0;
     while (g_keep_running) {
 
-        
+        loop_counter++;
         /* Check whether the HRM library indicated that it is ready for execution.  */
         if (g_ready_for_execution) {
             /* Execute the HRM algorithm. */
@@ -577,10 +641,21 @@ int main(int argc, char *argv[])
             /* Clear information that the HRM library is ready for execution. */
             g_ready_for_execution = FALSE;
         } else {
+            // Every 5 seconds, check FIFO level manually
+        if ((loop_counter % 5) == 0) {
+            uint16_t fifo_level = 0;
+            err_code_t check_result = as7058_ifce_get_fifo_level(&fifo_level);
+            if (check_result == ERR_SUCCESS) {
+                printk("FIFO level: %u (threshold: 5)\n", fifo_level);
+            }
+        }
             /* Sleep before re-checking whether the HRM library is ready for execution */
             k_sleep(K_MSEC(1000));
         }
     }
+
+    as7058_osal_disable_interrupt();
+result = as7058_stop_measurement();
 
     /**************************************************************************
      *                            STOP MEASUREMENT                            *

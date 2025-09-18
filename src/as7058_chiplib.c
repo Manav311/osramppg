@@ -63,10 +63,19 @@ static struct device_config g_dev_config;
  *                               LOCAL FUNCTIONS                              *
  ******************************************************************************/
 
+
+ err_code_t as7058_get_debug_state(uint8_t *p_lib_state, uint8_t *p_is_meas_running)
+{
+    if (p_lib_state) *p_lib_state = g_dev_config.lib_state;
+    if (p_is_meas_running) *p_is_meas_running = g_dev_config.is_meas_running;
+    return ERR_SUCCESS;
+}
+
+
 static err_code_t interrupt_handler(void)
 {
     err_code_t result;
-    as7058_interrupt_t irq_status;
+    as7058_interrupt_t irq_status = {0};
     uint8_t fifo_data[AS7058_FIFO_DATA_BUFFER_SIZE];
     uint16_t fifo_level;
     uint16_t fifo_data_size = 0;
@@ -74,97 +83,147 @@ static err_code_t interrupt_handler(void)
     uint8_t agc_status_num = AGC_MAX_CHANNEL_CNT;
     as7058_status_events_t status_events = {0, 0, 0, 0, 0, 0, 0, 0, 0};
     as7058_interrupt_t combined = {0, 0, 0, 0, 0, 0, 0, 0};
-    const as7058_special_measurement_result_t *p_special_result;
+    const as7058_special_measurement_result_t *p_special_result = NULL;
     uint16_t result_size;
 
-    if (!g_dev_config.is_meas_running) {
+    // Enhanced state checking
+    if (LIB_STATE_UNINITIALIZED == g_dev_config.lib_state) {
+        printk("interrupt_handler: Library uninitialized\n");
         return ERR_PERMISSION;
     }
 
-    result = as7058_ifce_get_interrupt_status(&irq_status);
-    if (ERR_SUCCESS == result) {
-        combined.asat = g_dev_config.enabled_irqs.asat & irq_status.asat;
-        combined.iir_overflow = g_dev_config.enabled_irqs.iir_overflow & irq_status.iir_overflow;
-        combined.leadoff = g_dev_config.enabled_irqs.leadoff & irq_status.leadoff;
-        combined.led_lowvds = g_dev_config.enabled_irqs.led_lowvds & irq_status.led_lowvds;
-        combined.sequencer = g_dev_config.enabled_irqs.sequencer & irq_status.sequencer;
-        combined.vcsel = g_dev_config.enabled_irqs.vcsel & irq_status.vcsel;
-        result = as7058_ifce_get_sub_status_registers(combined, &status_events);
-
-        /* Readout FIFO overflow status if enabled and triggered */
-        if (ERR_SUCCESS != result) {
-            /* Do nothing */
-        } else if (irq_status.fifo_overflow && g_dev_config.enabled_irqs.fifo_overflow) {
-            result = ERR_OVERFLOW;
-        } else if (irq_status.fifo_threshold && g_dev_config.enabled_irqs.fifo_threshold) {
-            /* Readout FIFO level if FIFO threshold IRQ is enabled and triggered */
-            result = as7058_ifce_get_fifo_level(&fifo_level);
-            if (ERR_SUCCESS == result) {
-
-                /* Prevent division by zero */
-                if (0 == g_dev_config.fifo_threshold) {
-                    result = ERR_CONFIG;
-                } else {
-
-                    /* Calculate read length as multiple of FIFO threshold */
-                    fifo_level = (fifo_level / g_dev_config.fifo_threshold) * g_dev_config.fifo_threshold;
-
-                    /* Calculate the real data size */
-                    fifo_data_size = fifo_level * AS7058_FIFO_SAMPLE_SIZE;
-
-                    /* Check that we have no capacity issues */
-                    if (sizeof(fifo_data) < fifo_data_size) {
-                        fifo_data_size = 0;
-                        result = ERR_SIZE;
-                    } else {
-                        result = as7058_ifce_get_fifo_data(fifo_data, fifo_data_size);
-                    }
-                }
-            }
-
-            if (ERR_SUCCESS == result) {
-                result = agc_get_status(agc_status, &agc_status_num);
-            }
-
-            if (ERR_SUCCESS == result && g_dev_config.p_normal_callback) {
-                g_dev_config.p_normal_callback(result, fifo_data, fifo_data_size, agc_status, agc_status_num,
-                                               status_events, g_dev_config.p_cb_param);
-            }
-
-            if ((ERR_SUCCESS == result) && (AS7058_MEAS_MODE_NORMAL == g_dev_config.mode)) {
-                result = agc_execute(fifo_data, fifo_data_size);
-            }
-
-            if ((ERR_SUCCESS == result) && (AS7058_MEAS_MODE_NORMAL != g_dev_config.mode)) {
-                if (AS7058_MEAS_MODE_SPECIAL_SCALING_EDA == g_dev_config.mode) {
-                    result_size = sizeof(as7058_eda_scaling_result_t);
-                    result = as7058_eda_scaling_process(fifo_data, fifo_data_size,
-                                                        (const as7058_eda_scaling_result_t **)&p_special_result);
-                } else if (AS7058_MEAS_MODE_SPECIAL_BIOZ == g_dev_config.mode) {
-                    result_size = sizeof(as7058_bioz_meas_result_t);
-                    result = as7058_bioz_process(fifo_data, fifo_data_size,
-                                                 (const as7058_bioz_meas_result_t **)&p_special_result);
-                } else if (AS7058_MEAS_MODE_SPECIAL_PD_OFFSET_CALIBRATION == g_dev_config.mode) {
-                    result_size = sizeof(as7058_pd_offset_calibration_result_t);
-                    result = as7058_pd_offset_calibration_process(
-                        fifo_data, fifo_data_size, (const as7058_pd_offset_calibration_result_t **)&p_special_result);
-                } else {
-                    return ERR_NOT_SUPPORTED;
-                }
-                if ((ERR_SUCCESS == result) && (g_dev_config.p_special_callback)) {
-                    g_dev_config.p_special_callback(g_dev_config.mode, p_special_result, result_size,
-                                                    g_dev_config.p_cb_param);
-                } else if (ERR_NO_DATA == result) {
-                    result = ERR_SUCCESS;
-                }
-            }
-        } else if (g_dev_config.p_normal_callback) {
-            g_dev_config.p_normal_callback(result, NULL, 0, NULL, 0, status_events, g_dev_config.p_cb_param);
-        }
+    if (!g_dev_config.is_meas_running) {
+        printk("interrupt_handler: Measurement not running\n");
+        return ERR_PERMISSION;
     }
 
-    if (ERR_SUCCESS != result && g_dev_config.p_normal_callback) {
+    // Safe interface call with null check protection
+    result = as7058_ifce_get_interrupt_status(&irq_status);
+    if (ERR_SUCCESS != result) {
+        printk("interrupt_handler: Failed to get interrupt status: %d\n", result);
+        return result;
+    }
+
+    // Safe bitwise operations
+    combined.asat = g_dev_config.enabled_irqs.asat & irq_status.asat;
+    combined.iir_overflow = g_dev_config.enabled_irqs.iir_overflow & irq_status.iir_overflow;
+    combined.leadoff = g_dev_config.enabled_irqs.leadoff & irq_status.leadoff;
+    combined.led_lowvds = g_dev_config.enabled_irqs.led_lowvds & irq_status.led_lowvds;
+    combined.sequencer = g_dev_config.enabled_irqs.sequencer & irq_status.sequencer;
+    combined.vcsel = g_dev_config.enabled_irqs.vcsel & irq_status.vcsel;
+
+    result = as7058_ifce_get_sub_status_registers(combined, &status_events);
+    if (ERR_SUCCESS != result) {
+        printk("interrupt_handler: Failed to get sub status registers: %d\n", result);
+        // Continue with limited functionality rather than failing completely
+    }
+
+    // Handle FIFO overflow
+    if (irq_status.fifo_overflow && g_dev_config.enabled_irqs.fifo_overflow) {
+        printk("interrupt_handler: FIFO overflow detected\n");
+        result = ERR_OVERFLOW;
+    } 
+    else if (irq_status.fifo_threshold && g_dev_config.enabled_irqs.fifo_threshold) {
+        printk("interrupt_handler: FIFO threshold reached\n");
+        
+        // Prevent division by zero
+        if (0 == g_dev_config.fifo_threshold) {
+            printk("interrupt_handler: Invalid FIFO threshold (0)\n");
+            result = ERR_CONFIG;
+        } else {
+            result = as7058_ifce_get_fifo_level(&fifo_level);
+            if (ERR_SUCCESS == result) {
+                // Calculate read length as multiple of FIFO threshold
+                fifo_level = (fifo_level / g_dev_config.fifo_threshold) * g_dev_config.fifo_threshold;
+                
+                // Calculate the real data size
+                fifo_data_size = fifo_level * AS7058_FIFO_SAMPLE_SIZE;
+                
+                printk("interrupt_handler: Reading %u bytes from FIFO\n", fifo_data_size);
+                
+                // Check capacity
+                if (sizeof(fifo_data) < fifo_data_size) {
+                    printk("interrupt_handler: FIFO data too large (%u > %zu)\n", 
+                           fifo_data_size, sizeof(fifo_data));
+                    fifo_data_size = 0;
+                    result = ERR_SIZE;
+                } else {
+                    result = as7058_ifce_get_fifo_data(fifo_data, fifo_data_size);
+                    if (ERR_SUCCESS != result) {
+                        printk("interrupt_handler: Failed to read FIFO data: %d\n", result);
+                        fifo_data_size = 0;
+                    }
+                }
+            } else {
+                printk("interrupt_handler: Failed to get FIFO level: %d\n", result);
+            }
+        }
+
+        // Only proceed with AGC if FIFO read was successful
+        if (ERR_SUCCESS == result) {
+            result = agc_get_status(agc_status, &agc_status_num);
+            if (ERR_SUCCESS != result) {
+                printk("interrupt_handler: Failed to get AGC status: %d\n", result);
+                // Continue without AGC status
+                agc_status_num = 0;
+                result = ERR_SUCCESS;
+            }
+        }
+
+        // Call normal callback if available and we have valid data
+        if ((ERR_SUCCESS == result) && (g_dev_config.p_normal_callback != NULL)) {
+            printk("interrupt_handler: Calling normal callback\n");
+            g_dev_config.p_normal_callback(result, fifo_data, fifo_data_size, agc_status, agc_status_num,
+                                           status_events, g_dev_config.p_cb_param);
+        }
+
+        // AGC processing for normal mode
+        if ((ERR_SUCCESS == result) && (AS7058_MEAS_MODE_NORMAL == g_dev_config.mode) && (fifo_data_size > 0)) {
+            result = agc_execute(fifo_data, fifo_data_size);
+            if (ERR_SUCCESS != result) {
+                printk("interrupt_handler: AGC execute failed: %d\n", result);
+            }
+        }
+
+        // Special measurement processing
+        if ((ERR_SUCCESS == result) && (AS7058_MEAS_MODE_NORMAL != g_dev_config.mode) && (fifo_data_size > 0)) {
+            if (AS7058_MEAS_MODE_SPECIAL_SCALING_EDA == g_dev_config.mode) {
+                result_size = sizeof(as7058_eda_scaling_result_t);
+                result = as7058_eda_scaling_process(fifo_data, fifo_data_size,
+                                                    (const as7058_eda_scaling_result_t **)&p_special_result);
+            } else if (AS7058_MEAS_MODE_SPECIAL_BIOZ == g_dev_config.mode) {
+                result_size = sizeof(as7058_bioz_meas_result_t);
+                result = as7058_bioz_process(fifo_data, fifo_data_size,
+                                             (const as7058_bioz_meas_result_t **)&p_special_result);
+            } else if (AS7058_MEAS_MODE_SPECIAL_PD_OFFSET_CALIBRATION == g_dev_config.mode) {
+                result_size = sizeof(as7058_pd_offset_calibration_result_t);
+                result = as7058_pd_offset_calibration_process(
+                    fifo_data, fifo_data_size, (const as7058_pd_offset_calibration_result_t **)&p_special_result);
+            } else {
+                printk("interrupt_handler: Unsupported measurement mode: %d\n", g_dev_config.mode);
+                return ERR_NOT_SUPPORTED;
+            }
+            
+            if ((ERR_SUCCESS == result) && (g_dev_config.p_special_callback != NULL) && (p_special_result != NULL)) {
+                g_dev_config.p_special_callback(g_dev_config.mode, p_special_result, result_size,
+                                                g_dev_config.p_cb_param);
+            } else if (ERR_NO_DATA == result) {
+                result = ERR_SUCCESS; // This is expected sometimes
+            }
+        }
+    } 
+    else if (g_dev_config.p_normal_callback != NULL) {
+        // Call callback even if no specific interrupt, but with null data
+        printk("interrupt_handler: Calling callback with no data\n");
         g_dev_config.p_normal_callback(result, NULL, 0, NULL, 0, status_events, g_dev_config.p_cb_param);
+    }
+
+    // Error handling - stop measurement on critical errors
+    if (ERR_SUCCESS != result) {
+        printk("interrupt_handler: Error occurred (%d), stopping measurement\n", result);
+        if (g_dev_config.p_normal_callback != NULL) {
+            g_dev_config.p_normal_callback(result, NULL, 0, NULL, 0, status_events, g_dev_config.p_cb_param);
+        }
         as7058_stop_measurement();
     }
 
