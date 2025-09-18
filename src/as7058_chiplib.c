@@ -64,7 +64,15 @@ static struct device_config g_dev_config;
  ******************************************************************************/
 
 
- err_code_t as7058_get_debug_state(uint8_t *p_lib_state, uint8_t *p_is_meas_running)
+
+// Create a public function in as7058_chiplib.c to call the interrupt handler:
+// err_code_t as7058_process_interrupt_data(void)
+// {
+//     return interrupt_handler();
+// }
+
+// Add this function to as7058_chiplib.c
+err_code_t as7058_get_debug_state(uint8_t *p_lib_state, uint8_t *p_is_meas_running)
 {
     if (p_lib_state) *p_lib_state = g_dev_config.lib_state;
     if (p_is_meas_running) *p_is_meas_running = g_dev_config.is_meas_running;
@@ -104,6 +112,28 @@ static err_code_t interrupt_handler(void)
         return result;
     }
 
+    // In your interrupt handler, right after "interrupt_handler: Failed to get interrupt status: 17"
+// Add this test to see if basic I2C still works:
+
+// Test if we can still read the silicon ID during interrupt
+  // Test basic I2C communication first
+    uint8_t test_id = 0;
+    err_code_t i2c_test = as7058_read_register(AS7058_REGADDR_SILICON_ID, &test_id);
+    printk("I2C test during interrupt: result=%d, id=0x%02X\n", i2c_test, test_id);
+    
+    if (i2c_test != ERR_SUCCESS) {
+        printk("I2C communication failed in interrupt context\n");
+        return i2c_test;
+    }
+
+      
+    result = as7058_ifce_get_interrupt_status(&irq_status);
+    
+    if (ERR_SUCCESS != result) {
+        printk("interrupt_handler: Failed to get interrupt status: %d\n", result);
+        return result;
+    }
+printk("interrupt_handler: Got interrupt status successfully\n");
     // Safe bitwise operations
     combined.asat = g_dev_config.enabled_irqs.asat & irq_status.asat;
     combined.iir_overflow = g_dev_config.enabled_irqs.iir_overflow & irq_status.iir_overflow;

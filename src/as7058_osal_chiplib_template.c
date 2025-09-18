@@ -28,6 +28,7 @@ All code lines which start with '// TODO' must be replaced by your own implement
 
 #include "as7058_osal_chiplib.h"
 #include "error_codes.h"
+// Add this in as7058_osal_chiplib.c
 
 
 
@@ -72,37 +73,17 @@ const struct device *i2c_dev1 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
  ******************************************************************************/
 
 
+
+// Simplify your interrupt handler:
 void as7058_interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-
     static uint32_t interrupt_count = 0;
     interrupt_count++;
     
     printk("AS7058 interrupt #%u triggered\n", interrupt_count);
+    
+    // Just signal that data is ready - don't process in interrupt context
 
-    // Add safety check
-    if (g_device_config.callback == NULL) {
-        printk("Warning: AS7058 callback is NULL\n");
-        return;
-    }
-    
-    err_code_t result;
-
-    // Call the callback once - don't loop on error
-    result = g_device_config.callback();
-    
-    if (result != ERR_SUCCESS) {
-        printk("AS7058 callback returned error: %d\n", result);
-        return;  // Exit immediately on error - don't try to read pin
-    }
-    
-    // Only check pin state if callback succeeded
-    // Use the interrupt pin state from the callback parameter instead
-    // The 'pins' parameter tells us which pin triggered the interrupt
-    if (pins & BIT(as7058_sensor_spec.pin)) {
-        // Pin is still active, but don't loop - let the next interrupt handle it
-        printk("AS7058 interrupt still active\n");
-    }
 }
 
 /*! Interrupt service routine of the interrupt pin */
@@ -210,7 +191,7 @@ err_code_t as7058_osal_enable_interrupt(void)
         return ERR_CONFIG;
     }
     
-    int ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_RISING);
+    int ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_LEVEL_LOW);
     if (ret != 0) {
         printk("Error %d: failed to enable AS7058 interrupt\n", ret);
         return ERR_SYSTEM_CONFIG;
