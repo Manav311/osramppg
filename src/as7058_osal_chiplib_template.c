@@ -77,12 +77,7 @@ const struct device *i2c_dev1 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
     // Give the semaphore to unblock the data processing thread
     //k_sem_give(&as7058_data_ready_sem);
     printk("as7058_interrupt_handler called \n");
-}
 
-
-/*! Interrupt service routine of the interrupt pin */
-static void interrupt_callback()
-{
     err_code_t result;
     uint8_t pin_state = 1;
 
@@ -93,12 +88,15 @@ static void interrupt_callback()
 
             /* Read the pin state again because it could be high in meanwhile again */
             if (ERR_SUCCESS == result) {
-                 result = get_int_pin_state(&pin_state);
+                 result = gpio_pin_get_dt(&as7058_sensor_spec);
             }
 
         } while ((ERR_SUCCESS == result) && pin_state);
     }
 }
+
+
+/*! Interrupt service routine of the interrupt pin */
 
 /******************************************************************************
  *                             GLOBAL FUNCTIONS                               *
@@ -127,7 +125,7 @@ err_code_t as7058_osal_initialize(const char *p_interface_desc)
     gpio_add_callback(as7058_sensor_spec.port, &as7058_cb_data);
 
     // Enable the interrupt
-    ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_TO_ACTIVE);
+    ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_RISING);
     if (ret != 0) {
         printk("Error %d: failed to configure interrupt\n", ret);
         return -1;
