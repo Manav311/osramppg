@@ -76,7 +76,7 @@ const struct device *i2c_dev1 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 {
     // Give the semaphore to unblock the data processing thread
     //k_sem_give(&as7058_data_ready_sem);
-    printk("as7058_interrupt_handler called \n");
+   // printk("as7058_interrupt_handler called \n");
 
     err_code_t result;
     uint8_t pin_state = 1;
@@ -106,18 +106,29 @@ err_code_t as7058_osal_initialize(const char *p_interface_desc)
 {
     err_code_t result = ERR_SUCCESS;
 
+   /* Shutdown OSAL interface in case there is one already opened */
+    if (g_device_config.init_done) {
+        as7058_osal_shutdown();
+    }
 
     int ret;
 
+
+    if (!device_is_ready(i2c_dev1)) {
+
+        result = ERR_SYSTEM_CONFIG;
+        /* handle error */
+    }
+
     if (!gpio_is_ready_dt(&as7058_sensor_spec)) {
         printk("Error: as7058 interrupt GPIO device not ready\n");
-        return -1;
+        result = ERR_SYSTEM_CONFIG;
     }
 
     ret = gpio_pin_configure_dt(&as7058_sensor_spec, GPIO_INPUT);
     if (ret != 0) {
         printk("Error %d: failed to configure interrupt pin\n", ret);
-        return -1;
+        result = ERR_SYSTEM_CONFIG;
     }
     
     // Setup the callback
@@ -128,17 +139,15 @@ err_code_t as7058_osal_initialize(const char *p_interface_desc)
     ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_RISING);
     if (ret != 0) {
         printk("Error %d: failed to configure interrupt\n", ret);
-        return -1;
+        result = ERR_SYSTEM_CONFIG;
     }
 
 
-     if (!device_is_ready(i2c_dev1)) {
-
+    if (ERR_SUCCESS == result) {
+        g_device_config.init_done = TRUE;
+    } else {
         as7058_osal_shutdown();
-        /* handle error */
     }
-    g_device_config.init_done = true;
-
 
 
     return result;
@@ -148,13 +157,11 @@ err_code_t as7058_osal_write_registers(uint8_t address,
                                       uint16_t number,
                                       const uint8_t *p_values)
 {
-    if (false == g_device_config.init_done) {
+   if (FALSE == g_device_config.init_done) {
         return ERR_PERMISSION;
     }
 
-    if (p_values == NULL) {
-        return ERR_POINTER;
-    }
+    M_CHECK_NULL_POINTER(p_values);
 
     /* Build [reg + data] buffer */
     uint8_t buf[number + 1];
@@ -172,15 +179,11 @@ err_code_t as7058_osal_write_registers(uint8_t address,
 
 err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t *p_values)
 {
-    if (false == g_device_config.init_done) {
+    if (FALSE == g_device_config.init_done) {
         return ERR_PERMISSION;
     }
-    if (p_values == NULL) {
-        return ERR_POINTER;
-    }
-    if (!device_is_ready(i2c_dev1)) {
-        return ERR_DATA_TRANSFER;
-    }
+
+    M_CHECK_NULL_POINTER(p_values);
 
     /* Repeated-start: write 1 byte (reg addr), then read `number` bytes */
     int ret = i2c_write_read(i2c_dev1, g_i2c_address, &address, 1, p_values, number);
@@ -208,6 +211,9 @@ err_code_t as7058_osal_shutdown(void)
 
     /* Deactivate interrupt pin */
     // TODO int_pin_shutdown();
+
+    gpio_pin_interrupt_configure_dt(&as7058_sensor_spec,
+                                               GPIO_INT_DISABLE);
 
     /* Disable I2C */
     // TODO i2c_shutdown();
