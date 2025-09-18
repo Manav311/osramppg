@@ -15,6 +15,18 @@
         "ring_buffer.h": "c",
         "string.h": "c",
         "kernel.h": "c",
-        "std_inc.h": "c"
+        "std_inc.h": "c",
+        "as7058_bioz_measurement.h": "c",
+        "cmath": "c",
+        "concepts": "c",
+        "cstdio": "c",
+        "cstdlib": "c",
+        "limits": "c",
+        "new": "c",
+        "cctype": "c",
+        "climits": "c",
+        "cstdarg": "c",
+        "cinttypes": "c",
+        "cstdbool": "c"
     }
 }

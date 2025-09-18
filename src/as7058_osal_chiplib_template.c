@@ -183,7 +183,7 @@ err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t 
         return ERR_PERMISSION;
     }
 
-    M_CHECK_NULL_POINTER(p_values);
+  //  M_CHECK_NULL_POINTER(p_values);
 
     /* Repeated-start: write 1 byte (reg addr), then read `number` bytes */
     int ret = i2c_write_read(i2c_dev1, g_i2c_address, &address, 1, p_values, number);

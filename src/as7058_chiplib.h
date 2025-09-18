@@ -80,6 +80,12 @@ err_code_t as7058_initialize(const as7058_callback_t p_normal_callback,
  */
 err_code_t as7058_shutdown(void);
 
+void interrupt_calling_func(void);
+
+uint8_t* get_fifo_data();
+
+as7058_status_events_t *get_status_events();
+
 /*!
  * \brief Write a register group.
  *
