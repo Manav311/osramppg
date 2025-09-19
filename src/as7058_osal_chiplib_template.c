@@ -19,10 +19,15 @@ All code lines which start with '// TODO' must be replaced by your own implement
 #include "as7058_osal_chiplib.h"
 #include "error_codes.h"
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/device.h>
+#include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
 
 
 
 const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c21));
+
+
 /******************************************************************************
  *                                DEFINITIONS                                 *
  ******************************************************************************/
@@ -43,13 +48,24 @@ static const uint8_t g_i2c_address = 0x55;
 /*! Create internal instance of the device configuration */
 static struct device_config g_device_config;
 
+#define AS7058_NODE                   DT_ALIAS(as7058interrupt)
+
+
+
+struct gpio_dt_spec as7058_sensor_spec = GPIO_DT_SPEC_GET(AS7058_NODE, gpios); // Blue LED spec
+
+// Add this near the top with other definitions
+static struct gpio_callback as7058_cb_data;
+
 /******************************************************************************
  *                               LOCAL FUNCTIONS                              *
  ******************************************************************************/
 
 /*! Interrupt service routine of the interrupt pin */
 static void interrupt_callback()
+
 {
+    printk("interrupt_callback");
     err_code_t result;
     uint8_t pin_state = 0;
 
@@ -60,10 +76,10 @@ static void interrupt_callback()
 
             /* Read the pin state again because it could be high in meanwhile again */
             if (ERR_SUCCESS == result) {
-                // TODO result = get_int_pin_state(&pin_state);
+                result = gpio_pin_get_dt(&as7058_sensor_spec);
             }
 
-        } while ((ERR_SUCCESS == result) && pin_state);
+        } while ((ERR_SUCCESS == result) && (pin_state == 0));
     }
 }
 
@@ -74,6 +90,7 @@ static void interrupt_callback()
 err_code_t as7058_osal_initialize(const char *p_interface_desc)
 {
     err_code_t result = ERR_SUCCESS;
+    int ret;
 
     /* Shutdown OSAL interface in case there is one already opened */
     if (g_device_config.init_done) {
@@ -89,13 +106,31 @@ err_code_t as7058_osal_initialize(const char *p_interface_desc)
     }
     printk("I2C device ready");
 
-
-    /* Configure interrupt pin: Triggering on rising edge, register interrupt_callback */
-    // TODO if ((ERR_SUCCESS == result) && (RETURN_CODE_OK != int_pin_init(TRIG_RISING, interrupt_callback))
-    {
+    if (!gpio_is_ready_dt(&as7058_sensor_spec)) {
+        printk("Error: as7058 interrupt GPIO device not ready\n");
         result = ERR_SYSTEM_CONFIG;
     }
 
+    ret = gpio_pin_configure_dt(&as7058_sensor_spec, GPIO_INPUT);
+    if (ret != 0) {
+        printk("Error %d: failed to configure interrupt pin\n", ret);
+        result = ERR_SYSTEM_CONFIG;
+    }
+
+    // Setup the callback
+    gpio_init_callback(&as7058_cb_data, interrupt_callback, BIT(as7058_sensor_spec.pin));
+    gpio_add_callback(as7058_sensor_spec.port, &as7058_cb_data);
+
+
+    /* Configure interrupt pin: Triggering on rising edge, register interrupt_callback */
+    // TODO if ((ERR_SUCCESS == result) && (RETURN_CODE_OK != int_pin_init(TRIG_RISING, interrupt_callback))
+ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_RISING);
+    if (ret != 0) {
+        printk("Error %d: failed to configure interrupt\n", ret);
+        result = ERR_SYSTEM_CONFIG;
+    }
+   
+     
     if (ERR_SUCCESS == result) {
         g_device_config.init_done = TRUE;
     } else {
@@ -123,7 +158,7 @@ err_code_t as7058_osal_write_registers(uint8_t address, uint16_t number, const u
         return ERR_DATA_TRANSFER;
     }
 
-    printk("Write success: reg 0x%02X = 0x%02X", address, *p_values);
+    printk("Write success: reg 0x%02X = 0x%02X \n", address, *p_values);
 
 
     return ERR_SUCCESS;
@@ -142,7 +177,7 @@ err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t 
         printk("Read failed: reg 0x%02X (err=%d)", address, ret);
         return ERR_DATA_TRANSFER;
     }
-    printk("Read success: reg 0x%02X = 0x%02X", address, *p_values);
+    printk("Read success: reg 0x%02X = 0x%02X \n", address, *p_values);
 
     /* Call the platform specifc i2c receive function */
     // TODO if (RETURN_CODE_OK != i2c_read(g_i2c_address, address, number, p_values)
@@ -169,6 +204,9 @@ err_code_t as7058_osal_shutdown(void)
 
     /* Disable I2C */
     // TODO i2c_shutdown();
+
+    gpio_pin_interrupt_configure_dt(&as7058_sensor_spec,
+                                               GPIO_INT_DISABLE);
 
     memset(&g_device_config, 0, sizeof(g_device_config));
 

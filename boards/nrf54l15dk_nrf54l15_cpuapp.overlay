@@ -23,3 +23,31 @@
 		};
 	};
 };
+
+
+/{
+
+
+     buttons{
+        compatible = "gpio-keys";
+        i2c_interrupt_pin: i2c_interrupt_pin {
+			gpios = <&gpio1 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Push button switch 0";
+		};
+        i2c_interrupt_pin2: i2c_interrupt_pin2 {
+			gpios = <&gpio1 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Sleep/Wakeup Pin";
+		};
+    };
+
+
+      aliases{
+
+        as7058interrupt = &i2c_interrupt_pin;
+        lis2dh12interrupt = &i2c_interrupt_pin2;
+    };
+};
+    
+
+
+ 
