@@ -18,7 +18,11 @@ All code lines which start with '// TODO' must be replaced by your own implement
 
 #include "as7058_osal_chiplib.h"
 #include "error_codes.h"
+#include <zephyr/drivers/i2c.h>
 
+
+
+const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 /******************************************************************************
  *                                DEFINITIONS                                 *
  ******************************************************************************/
@@ -107,9 +111,16 @@ err_code_t as7058_osal_write_registers(uint8_t address, uint16_t number, const u
 
     /* Call the platform specifc i2c transmit function */
     // TODO if (RETURN_CODE_OK != i2c_write(g_i2c_address, address, number, p_values)
-    {
+
+    int8_t buf[2] = { address, *p_values };
+    int ret = i2c_write(i2c_dev, buf, number, g_i2c_address);
+    if (ret != 0) {
+        printk("Write failed: reg 0x%02X = 0x%02X (err=%d)", address, *p_values, ret);
         return ERR_DATA_TRANSFER;
     }
+
+    printk("Write success: reg 0x%02X = 0x%02X", address, *p_values);
+
 
     return ERR_SUCCESS;
 }
@@ -122,12 +133,15 @@ err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t 
 
     M_CHECK_NULL_POINTER(p_values);
 
-    /* Call the platform specifc i2c receive function */
-    // TODO if (RETURN_CODE_OK != i2c_read(g_i2c_address, address, number, p_values)
-    {
+     int ret = i2c_write_read(i2c_dev, g_i2c_address, &address, 1, p_values, number);
+    if (ret != 0) {
+        printk("Read failed: reg 0x%02X (err=%d)", address, ret);
         return ERR_DATA_TRANSFER;
     }
+    printk("Read success: reg 0x%02X = 0x%02X", address, *p_values);
 
+    /* Call the platform specifc i2c receive function */
+    // TODO if (RETURN_CODE_OK != i2c_read(g_i2c_address, address, number, p_values)
     return ERR_SUCCESS;
 }
 
