@@ -82,9 +82,13 @@ err_code_t as7058_osal_initialize(const char *p_interface_desc)
 
     /* Configure I2C */
     // TODO if ((ERR_SUCCESS == result) && (RETURN_CODE_OK != i2c_init())
-    {
+
+     if (!device_is_ready(i2c_dev)) {
+        printk("I2C device not ready");
         result = ERR_SYSTEM_CONFIG;
     }
+    printk("I2C device ready");
+
 
     /* Configure interrupt pin: Triggering on rising edge, register interrupt_callback */
     // TODO if ((ERR_SUCCESS == result) && (RETURN_CODE_OK != int_pin_init(TRIG_RISING, interrupt_callback))
