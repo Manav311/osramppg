@@ -97,7 +97,7 @@ err_code_t as7058_osal_initialize(const char *p_interface_desc)
     return result;
 }
 
-err_code_t as7058_osal_write_registers(uint8_t address, uint16_t number, uint8_t *p_values)
+err_code_t as7058_osal_write_registers(uint8_t address, uint16_t number, const uint8_t *p_values)
 {
     if (FALSE == g_device_config.init_done) {
         return ERR_PERMISSION;

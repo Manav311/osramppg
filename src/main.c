@@ -528,7 +528,7 @@ int main(void)
             g_ready_for_execution = FALSE;
         } else {
             /* Sleep before re-checking whether the HRM library is ready for execution */
-            usleep(100000);
+            k_msleep(100);
         }
     }
 
