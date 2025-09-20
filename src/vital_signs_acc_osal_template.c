@@ -25,11 +25,28 @@
  *                                 INCLUDES                                   *
  ******************************************************************************/
 
+ 
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/sensor.h>
+
+#include <zephyr/drivers/gpio.h>
+#include <hal/nrf_gpio.h>
+
+
 #include "vital_signs_acc_osal.h"
+#include "error_codes.h"
+#include "common.h"
+
+static const struct device *i2c_dev2 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
+
+#define LIS12DH_I2C_ADDR 0x19
 
 /******************************************************************************
  *                             GLOBAL FUNCTIONS                               *
  ******************************************************************************/
+
 
 err_code_t vs_acc_osal_transfer_i2c(const char *p_config, uint8_t dev_addr, const uint8_t *p_send_data,
                                     uint16_t send_len, uint8_t *p_recv_data, uint16_t recv_len)
@@ -37,9 +54,12 @@ err_code_t vs_acc_osal_transfer_i2c(const char *p_config, uint8_t dev_addr, cons
     M_UNUSED_PARAM(p_config);
 
     // TODO: if (RETURN_CODE_OK != i2c_transfer(dev_addr, p_send_data, send_len, p_recv_data, recv_len))
-    {
-        return ERR_I2C;
+
+    int ret = i2c_write_read(i2c_dev2, LIS12DH_I2C_ADDR, p_send_data, send_len, p_recv_data, recv_len);
+    if (ret < 0) {
+        return ERR_DATA_TRANSFER;
     }
+    
 
     return ERR_SUCCESS;
 }
@@ -49,9 +69,10 @@ err_code_t vs_acc_osal_get_tick(const char *p_config, uint32_t *p_ms_tick)
     M_UNUSED_PARAM(p_config);
 
     // TODO: if (RETURN_CODE_OK != get_microseconds(p_ms_tick))
-    {
-        return ERR_TIMER_ACCESS;
-    }
+    
+    
 
     return ERR_SUCCESS;
 }
+
+

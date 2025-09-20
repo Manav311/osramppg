@@ -2,6 +2,7 @@
     "files.associations": {
         "log.h": "c",
         "string.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "as7058_osal_chiplib.h": "c"
     }
 }
