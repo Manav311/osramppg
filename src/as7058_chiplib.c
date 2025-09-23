@@ -24,7 +24,7 @@
 #include "std_inc.h"
 
 
-#include "as7058a_hrm_b0.h"
+#include "as7058a_spo2_a0.h"
 
 /******************************************************************************
  *                                DEFINITIONS                                 *

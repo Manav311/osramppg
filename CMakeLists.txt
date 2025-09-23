@@ -14,7 +14,7 @@ target_sources(app PRIVATE ${app_sources})
 
 
 # --- Link prebuilt .a file ---
-set(MYLIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/libas7058a_hrm_b0.a)
+set(MYLIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/libas7058a_spo2_a0.a)
 
 add_library(mylib STATIC IMPORTED)
 set_target_properties(mylib PROPERTIES IMPORTED_LOCATION ${MYLIB_PATH})
