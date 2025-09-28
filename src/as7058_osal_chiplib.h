@@ -63,7 +63,7 @@ typedef err_code_t (*as7058_osal_interrupt_t)(void);
  * \retval ::ERR_ARGUMENT           Argument content is not supported.
  * \retval ::ERR_COM_INTERFACE      The interface to the sensor is faulty.
  */
-err_code_t as7058_osal_initialize(const char *p_interface_desc);
+err_code_t as7058_osal_initialize(void);
 
 /*!
  * \brief Shutdown of the hardware abstraction layer.

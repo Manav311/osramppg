@@ -22,6 +22,8 @@
 #include "as7058_version.h"
 #include "error_codes.h"
 #include "std_inc.h"
+#include "as7058_osal_chiplib_template.h"
+
 
 /******************************************************************************
  *                                DEFINITIONS                                 *
@@ -62,17 +64,20 @@ static struct device_config g_dev_config;
 /******************************************************************************
  *                               LOCAL FUNCTIONS                              *
  ******************************************************************************/
+uint8_t fifo_data[AS7058_FIFO_DATA_BUFFER_SIZE];
+uint16_t fifo_data_size = 0;
 
+as7058_status_events_t status_events = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 static err_code_t interrupt_handler(void)
 {
     err_code_t result;
     as7058_interrupt_t irq_status;
-    uint8_t fifo_data[AS7058_FIFO_DATA_BUFFER_SIZE];
+    
     uint16_t fifo_level;
-    uint16_t fifo_data_size = 0;
+    
     agc_status_t agc_status[AGC_MAX_CHANNEL_CNT];
     uint8_t agc_status_num = AGC_MAX_CHANNEL_CNT;
-    as7058_status_events_t status_events = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    
     as7058_interrupt_t combined = {0, 0, 0, 0, 0, 0, 0, 0};
     const as7058_special_measurement_result_t *p_special_result;
     uint16_t result_size;
@@ -161,6 +166,22 @@ static err_code_t interrupt_handler(void)
         } else if (g_dev_config.p_normal_callback) {
             g_dev_config.p_normal_callback(result, NULL, 0, NULL, 0, status_events, g_dev_config.p_cb_param);
         }
+
+
+        
+    //printk("fifo_data size: %d \n", fifo_data_size);
+  //  result = as7058_ifce_get_fifo_data(fifo_data, 18);
+    
+        //printk("as7058_ifce_get_fifo_data err: %d \n", result);
+      // int as_data_state;
+     //  err_code_t as_data = as7058a_hrm_b0_set_input(fifo_data, 18,status_events,NULL,0,NULL,0,&as_data_state);
+       //printk("as7058a_hrm_b0_set_input err: %d \n", as_data);
+      // printk("as_data_state: %d \n", as_data_state);
+    //    for(int i=0; i<18; i++){
+    //      printk("fifo_data[%d]: %d \n", i, fifo_data[i]);
+    //        fifo_data[i] = fifo_data[i];
+    //    }
+      
     }
 
     if (ERR_SUCCESS != result && g_dev_config.p_normal_callback) {
@@ -169,6 +190,20 @@ static err_code_t interrupt_handler(void)
     }
 
     return result;
+}
+
+uint8_t* get_fifo_data(){
+    return fifo_data;
+}
+
+as7058_status_events_t *get_status_events(){
+    return &status_events;
+}
+
+
+void interrupt_calling_func(void){
+      err_code_t result1 = interrupt_handler();
+     printf("interrupt_handler err: %d \n", result1);
 }
 
 static err_code_t get_measurement_config_from_sensor(as7058_meas_config_t *p_meas_config,
@@ -229,11 +264,11 @@ err_code_t as7058_initialize(const as7058_callback_t p_normal_callback,
     err_code_t result;
     uint8_t id;
 
-    M_CHECK_NULL_POINTER(p_normal_callback);
+   // M_CHECK_NULL_POINTER(p_normal_callback);
 
     as7058_shutdown();
 
-    result = as7058_osal_initialize(p_interface_descr);
+    result = as7058_osal_initialize();
 
     if (ERR_SUCCESS == result) {
         result = as7058_ifce_get_silicon_id(&id);
@@ -283,39 +318,49 @@ err_code_t as7058_shutdown(void)
 {
     err_code_t result, result_osal, result_agc, result_eda_scaling, result_bioz, result_pd_offset_calibration;
 
-    if (LIB_STATE_UNINITIALIZED != g_dev_config.lib_state) {
+    // DEBUG: Log entry into the shutdown function
+     printk("as7058_shutdown: state = %d", g_dev_config.lib_state);
 
+    if (LIB_STATE_UNINITIALIZED != g_dev_config.lib_state) {
+         printk("as7058_shutdown: Entering if block to stop measurement");
         result = as7058_stop_measurement();
 
         if (ERR_SUCCESS == result) {
+            // printk("as7058_shutdown: Measurement stopped, resetting chip");
             result = as7058_ifce_reset_chip();
         }
     } else {
+         //printk("as7058_shutdown: Entering else block, already uninitialized");
         result = ERR_SUCCESS;
     }
 
     result_agc = agc_shutdown();
     if (ERR_SUCCESS == result) {
+       // printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_agc;
     }
 
     result_eda_scaling = as7058_eda_scaling_shutdown();
     if (ERR_SUCCESS == result) {
+        //printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_eda_scaling;
     }
 
     result_bioz = as7058_bioz_shutdown();
     if (ERR_SUCCESS == result) {
+       // printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_bioz;
     }
 
     result_pd_offset_calibration = as7058_pd_offset_calibration_shutdown();
     if (ERR_SUCCESS == result) {
+       // printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_pd_offset_calibration;
     }
 
     result_osal = as7058_osal_shutdown();
     if (ERR_SUCCESS == result) {
+       // printk("as7058_shutdown: Entering else block, already uninitialized");
         result = result_osal;
     }
 
@@ -503,6 +548,13 @@ err_code_t as7058_start_measurement(as7058_meas_mode_t mode)
         result = agc_start_processing(&g_dev_config.meas_config, sizeof(g_dev_config.meas_config));
     }
 
+    /* One-time clear of any latched interrupt before enabling line */
+as7058_ifce_get_interrupt_status(&(as7058_interrupt_t){0});  // ignore result
+as7058_ifce_get_fifo_level(&(uint16_t){0});                   // optional read to clear
+/* Now enable GPIO IRQ */
+as7058_osal_irq_enable(true);
+
+
     if ((ERR_SUCCESS == result) && (AS7058_MEAS_MODE_NORMAL != mode)) {
         /* Check that the special measurement callback was configured */
         if (NULL == g_dev_config.p_special_callback) {
@@ -541,6 +593,10 @@ err_code_t as7058_start_measurement(as7058_meas_mode_t mode)
 err_code_t as7058_stop_measurement(void)
 {
     err_code_t result = ERR_DATA_TRANSFER;
+
+    /* in as7058_stop_measurement() and/as7058_shutdown() */
+as7058_osal_irq_enable(false);
+
 
     if (LIB_STATE_UNINITIALIZED == g_dev_config.lib_state) {
         return ERR_PERMISSION;

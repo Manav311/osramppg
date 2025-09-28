@@ -112,30 +112,6 @@ static void as7058_callback(err_code_t error, const uint8_t *p_fifo_data, uint16
  *                              GLOBAL FUNCTIONS                              *
  ******************************************************************************/
 
- static void my_sensor_irq(const struct device *port,
-                          struct gpio_callback *cb,
-                          uint32_t pins)
-{
-	/* handle your interrupt here */
-	printk("Sensor IRQ!\n");
-    err_code_t result;
-    uint8_t pin_state = 0;
-    
-
-    if (NULL != g_device_config.callback) {
-        do {
-            printk("my_sensor_irq\n");
-            /* Calls the ChipLib callback function registered by as7058_osal_register_int_handler */
-            result = g_device_config.callback();
-
-            /* Read the pin state again because it could be high in meanwhile again */
-            if (ERR_SUCCESS == result) {
-                 pin_state = gpio_pin_get_dt(&sens_int);
-            }
-
-        } while ((ERR_SUCCESS == result) && pin_state);
-}
-}
 
 int main(void)
 {
@@ -158,27 +134,6 @@ int main(void)
         printf("as7058_initialize returned error %d.\n", result);
         goto ERROR;
     }
-
-    
-	if (!device_is_ready(sens_int.port)) {
-		result = ERR_SYSTEM_CONFIG;
-	}
-
-	int ret = gpio_pin_configure_dt(&sens_int, GPIO_INPUT);
-	if (ret) {
-		result = ERR_SYSTEM_CONFIG;
-	}
-
-	/* Choose edge/polarity to match your device */
-	ret = gpio_pin_interrupt_configure_dt(&sens_int,
-					      GPIO_INT_EDGE_RISING);
-	if (ret) {
-		result = ERR_SYSTEM_CONFIG;
-	}
-
-	/* Initialise the callback and register it */
-	gpio_init_callback(&sens_cb, my_sensor_irq, BIT(sens_int.pin));
-	gpio_add_callback(sens_int.port, &sens_cb);
 
 
     /* Initialize the SpO2 library. */
