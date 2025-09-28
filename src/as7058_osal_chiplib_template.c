@@ -77,7 +77,7 @@ static void as7058_bottom_half_work(struct k_work *work)
         err_code_t res = g_device_config.callback();
 
         int lvl = gpio_pin_get_dt(&sens_int);
-        printk("chiplib cb res=%d, line=%d\n", res, lvl);
+        //printk("chiplib cb res=%d, line=%d\n", res, lvl);
 
         /* Re-read line; if inactive, we're done */
         int pin_state = gpio_pin_get_dt(&sens_int);
@@ -101,7 +101,7 @@ static void as7058_interrupt_handler(const struct device *dev,
 
 
      int lvl = gpio_pin_get_dt(&sens_int);
-    printk("AS7058 IRQ fired, line now=%d (0=active if ACTIVE_LOW)\n", lvl);
+   // printk("AS7058 IRQ fired, line now=%d (0=active if ACTIVE_LOW)\n", lvl);
     /* Wake the bottom half. If IRQs can coalesce, a sem is fine too: */
     k_work_submit(&as7058_bottom_half);
 }
@@ -208,7 +208,7 @@ err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t 
 err_code_t as7058_osal_register_int_handler(as7058_osal_interrupt_t cb_fn)
 {
     if (!g_device_config.init_done) return ERR_PERMISSION;
-    printk("as7058_osal_register_int_handler called, cb=%p\n", (void*)cb_fn);
+   // printk("as7058_osal_register_int_handler called, cb=%p\n", (void*)cb_fn);
     g_device_config.callback = cb_fn;
     return ERR_SUCCESS;
 }

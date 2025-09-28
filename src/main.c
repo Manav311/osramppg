@@ -82,7 +82,7 @@ static void as7058_callback(err_code_t error, const uint8_t *p_fifo_data, uint16
                             as7058_status_events_t sensor_events, const void *p_cb_param)
 {
 
-    printk("as7058_callback\n");
+    //printk("as7058_callback\n");
     /* Unused parameter, silence potentially enabled compiler warning. */
     M_UNUSED_PARAM(p_cb_param);
 
