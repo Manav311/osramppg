@@ -19,6 +19,10 @@ All code lines which start with '// TODO' must be replaced by your own implement
 #include "as7058_osal_chiplib.h"
 #include "error_codes.h"
 
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/i2c.h>
+#include <zephyr/device.h>
+
 /******************************************************************************
  *                                DEFINITIONS                                 *
  ******************************************************************************/
@@ -36,16 +40,29 @@ struct device_config {
 /*! I2C address of the AS7058 */
 static const uint8_t g_i2c_address = 0x55;
 
+
+
 /*! Create internal instance of the device configuration */
 static struct device_config g_device_config;
+
+/* Pull the GPIO spec from DT: */
+static const struct gpio_dt_spec sens_int = GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), my_sensor_int_gpios);
+/* Declare the callback object */
+static struct gpio_callback sens_cb;
+
+const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 
 /******************************************************************************
  *                               LOCAL FUNCTIONS                              *
  ******************************************************************************/
 
-/*! Interrupt service routine of the interrupt pin */
-static void interrupt_callback()
+ /* This is the ISR you want called on an edge */
+static void my_sensor_irq(const struct device *port,
+                          struct gpio_callback *cb,
+                          uint32_t pins)
 {
+	/* handle your interrupt here */
+	printk("Sensor IRQ!\n");
     err_code_t result;
     uint8_t pin_state = 0;
 
@@ -56,12 +73,15 @@ static void interrupt_callback()
 
             /* Read the pin state again because it could be high in meanwhile again */
             if (ERR_SUCCESS == result) {
-                // TODO result = get_int_pin_state(&pin_state);
+                 pin_state = gpio_pin_get_dt(&sens_int);
             }
 
         } while ((ERR_SUCCESS == result) && pin_state);
-    }
 }
+}
+
+/*! Interrupt service routine of the interrupt pin */
+
 
 /******************************************************************************
  *                             GLOBAL FUNCTIONS                               *
@@ -70,22 +90,54 @@ static void interrupt_callback()
 err_code_t as7058_osal_initialize(const char *p_interface_desc)
 {
     err_code_t result = ERR_SUCCESS;
+    int ret;
+
 
     /* Shutdown OSAL interface in case there is one already opened */
     if (g_device_config.init_done) {
         as7058_osal_shutdown();
     }
 
+     if (!device_is_ready(i2c_dev)) {
+
+        result = ERR_SYSTEM_CONFIG;
+        /* handle error */
+    }
+
     /* Configure I2C */
     // TODO if ((ERR_SUCCESS == result) && (RETURN_CODE_OK != i2c_init())
     {
-        result = ERR_SYSTEM_CONFIG;
+       // result = ERR_SYSTEM_CONFIG;
     }
+
+
+   
+
+
+	if (!device_is_ready(sens_int.port)) {
+		result = ERR_SYSTEM_CONFIG;
+	}
+
+	ret = gpio_pin_configure_dt(&sens_int, GPIO_INPUT);
+	if (ret) {
+		result = ERR_SYSTEM_CONFIG;
+	}
+
+	/* Choose edge/polarity to match your device */
+	ret = gpio_pin_interrupt_configure_dt(&sens_int,
+					      GPIO_INT_EDGE_FALLING);
+	if (ret) {
+		result = ERR_SYSTEM_CONFIG;
+	}
+
+	/* Initialise the callback and register it */
+	gpio_init_callback(&sens_cb, my_sensor_irq, BIT(sens_int.pin));
+	gpio_add_callback(sens_int.port, &sens_cb);
 
     /* Configure interrupt pin: Triggering on rising edge, register interrupt_callback */
     // TODO if ((ERR_SUCCESS == result) && (RETURN_CODE_OK != int_pin_init(TRIG_RISING, interrupt_callback))
     {
-        result = ERR_SYSTEM_CONFIG;
+        //result = ERR_SYSTEM_CONFIG;
     }
 
     if (ERR_SUCCESS == result) {
@@ -107,7 +159,15 @@ err_code_t as7058_osal_write_registers(uint8_t address, uint16_t number, const u
 
     /* Call the platform specifc i2c transmit function */
     // TODO if (RETURN_CODE_OK != i2c_write(g_i2c_address, address, number, p_values)
-    {
+
+
+     /* Build [reg + data] buffer */
+    uint8_t buf[number + 1];
+    buf[0] = address;
+    memcpy(&buf[1], p_values, number);
+
+    int ret = i2c_write(i2c_dev, buf, number + 1, g_i2c_address);
+    if (ret < 0) {
         return ERR_DATA_TRANSFER;
     }
 
@@ -124,7 +184,10 @@ err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t 
 
     /* Call the platform specifc i2c receive function */
     // TODO if (RETURN_CODE_OK != i2c_read(g_i2c_address, address, number, p_values)
-    {
+
+     /* Repeated-start: write 1 byte (reg addr), then read `number` bytes */
+    int ret = i2c_write_read(i2c_dev, g_i2c_address, &address, 1, p_values, number);
+    if (ret < 0) {
         return ERR_DATA_TRANSFER;
     }
 

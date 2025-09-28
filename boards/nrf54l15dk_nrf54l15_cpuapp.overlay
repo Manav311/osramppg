@@ -23,3 +23,14 @@
 		};
 	};
 };
+
+
+
+/* App-owned properties you can read from code */
+ / {
+	zephyr,user {
+		/* IRQ on P0.09, active-low, with internal pull-up */
+		my_sensor_int_gpios = <&gpio1 9 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+	};
+};
+
