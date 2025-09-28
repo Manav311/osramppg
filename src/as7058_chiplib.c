@@ -22,7 +22,7 @@
 #include "as7058_version.h"
 #include "error_codes.h"
 #include "std_inc.h"
-
+#include "as7058_osal_chiplib_template.h"
 
 #include "as7058a_hrm_b0.h"
 
@@ -171,7 +171,7 @@ static err_code_t interrupt_handler(void)
 
         
     //printk("fifo_data size: %d \n", fifo_data_size);
-    result = as7058_ifce_get_fifo_data(fifo_data, 18);
+  //  result = as7058_ifce_get_fifo_data(fifo_data, 18);
     
         //printk("as7058_ifce_get_fifo_data err: %d \n", result);
       // int as_data_state;
@@ -269,7 +269,7 @@ err_code_t as7058_initialize(const as7058_callback_t p_normal_callback,
 
     as7058_shutdown();
 
-    result = as7058_osal_initialize(p_interface_descr);
+    result = as7058_osal_initialize();
 
     if (ERR_SUCCESS == result) {
         result = as7058_ifce_get_silicon_id(&id);
@@ -549,6 +549,13 @@ err_code_t as7058_start_measurement(as7058_meas_mode_t mode)
         result = agc_start_processing(&g_dev_config.meas_config, sizeof(g_dev_config.meas_config));
     }
 
+    /* One-time clear of any latched interrupt before enabling line */
+as7058_ifce_get_interrupt_status(&(as7058_interrupt_t){0});  // ignore result
+as7058_ifce_get_fifo_level(&(uint16_t){0});                   // optional read to clear
+/* Now enable GPIO IRQ */
+as7058_osal_irq_enable(true);
+
+
     if ((ERR_SUCCESS == result) && (AS7058_MEAS_MODE_NORMAL != mode)) {
         /* Check that the special measurement callback was configured */
         if (NULL == g_dev_config.p_special_callback) {
@@ -587,6 +594,10 @@ err_code_t as7058_start_measurement(as7058_meas_mode_t mode)
 err_code_t as7058_stop_measurement(void)
 {
     err_code_t result = ERR_DATA_TRANSFER;
+
+    /* in as7058_stop_measurement() and/as7058_shutdown() */
+as7058_osal_irq_enable(false);
+
 
     if (LIB_STATE_UNINITIALIZED == g_dev_config.lib_state) {
         return ERR_PERMISSION;

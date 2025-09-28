@@ -27,6 +27,8 @@
         "climits": "c",
         "cstdarg": "c",
         "cinttypes": "c",
-        "cstdbool": "c"
+        "cstdbool": "c",
+        "gpio.h": "c",
+        "as7058_osal_chiplib_template.h": "c"
     }
 }

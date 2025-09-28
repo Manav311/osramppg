@@ -67,91 +67,115 @@ static struct device_config g_device_config;
 
 const struct device *i2c_dev1 = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 
+static K_SEM_DEFINE(as7058_irq_sem, 0, 1);     /* ISR gives, worker takes */
+static struct k_work as7058_bottom_half;
+
+static void as7058_bottom_half_work(struct k_work *work);
+static void as7058_interrupt_handler(const struct device *dev,
+                                     struct gpio_callback *cb,
+                                     uint32_t pins);
+
 /******************************************************************************
  *                               LOCAL FUNCTIONS                              *
  ******************************************************************************/
 
-
- void as7058_interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+/* --- Bottom-half worker: safe context for I2C/chiplib --- */
+static void as7058_bottom_half_work(struct k_work *work)
 {
-    // Give the semaphore to unblock the data processing thread
-    //k_sem_give(&as7058_data_ready_sem);
-   // printk("as7058_interrupt_handler called \n");
+    if (!g_device_config.init_done || g_device_config.callback == NULL) {
+        return;
+    }
 
-    err_code_t result;
-    uint8_t pin_state = 1;
+    /* Drain until INT de-asserts (handles coalesced/fast IRQs) */
+    for (;;) {
+        err_code_t res = g_device_config.callback();
 
-    if (NULL != g_device_config.callback) {
-        do {
-            /* Calls the ChipLib callback function registered by as7058_osal_register_int_handler */
-            result = g_device_config.callback();
+        int lvl = gpio_pin_get_dt(&as7058_sensor_spec);
+        printk("chiplib cb res=%d, line=%d\n", res, lvl);
 
-            /* Read the pin state again because it could be high in meanwhile again */
-            if (ERR_SUCCESS == result) {
-                 result = gpio_pin_get_dt(&as7058_sensor_spec);
-            }
-
-        } while ((ERR_SUCCESS == result) && pin_state);
+        /* Re-read line; if inactive, we're done */
+        int pin_state = gpio_pin_get_dt(&as7058_sensor_spec);
+        if (res != ERR_SUCCESS || pin_state) {
+            /* pin_state == 1 means line is HIGH. If ACTIVE_LOW, HIGH == idle */
+            break;
+        }
+        /* Optional: yield a bit if needed */
+        /* k_yield(); */
     }
 }
 
+/* --- Top-half ISR: keep it tiny --- */
+static void as7058_interrupt_handler(const struct device *dev,
+                                     struct gpio_callback *cb,
+                                     uint32_t pins)
+{
+    ARG_UNUSED(dev);
+    ARG_UNUSED(cb);
+    ARG_UNUSED(pins);
 
-/*! Interrupt service routine of the interrupt pin */
 
-/******************************************************************************
- *                             GLOBAL FUNCTIONS                               *
- ******************************************************************************/
+     int lvl = gpio_pin_get_dt(&as7058_sensor_spec);
+    printk("AS7058 IRQ fired, line now=%d (0=active if ACTIVE_LOW)\n", lvl);
+    /* Wake the bottom half. If IRQs can coalesce, a sem is fine too: */
+    k_work_submit(&as7058_bottom_half);
+}
 
-err_code_t as7058_osal_initialize(const char *p_interface_desc)
+/* --- Init: configure GPIO + IRQ + worker --- */
+err_code_t as7058_osal_initialize(void)
 {
     err_code_t result = ERR_SUCCESS;
 
-   /* Shutdown OSAL interface in case there is one already opened */
     if (g_device_config.init_done) {
         as7058_osal_shutdown();
     }
 
-    int ret;
-
-
     if (!device_is_ready(i2c_dev1)) {
-
-        result = ERR_SYSTEM_CONFIG;
-        /* handle error */
+        return ERR_SYSTEM_CONFIG;
     }
-
     if (!gpio_is_ready_dt(&as7058_sensor_spec)) {
-        printk("Error: as7058 interrupt GPIO device not ready\n");
-        result = ERR_SYSTEM_CONFIG;
+        return ERR_SYSTEM_CONFIG;
     }
 
-    ret = gpio_pin_configure_dt(&as7058_sensor_spec, GPIO_INPUT);
-    if (ret != 0) {
-        printk("Error %d: failed to configure interrupt pin\n", ret);
-        result = ERR_SYSTEM_CONFIG;
+    /* If line is open-drain active-low, ensure DT has PULL_UP|ACTIVE_LOW.
+       Here we just configure as input; flags come from DT. */
+    int ret = gpio_pin_configure_dt(&as7058_sensor_spec, GPIO_INPUT);
+    if (ret) {
+        return ERR_SYSTEM_CONFIG;
     }
-    
-    // Setup the callback
-    gpio_init_callback(&as7058_cb_data, as7058_interrupt_handler, BIT(as7058_sensor_spec.pin));
+
+    k_work_init(&as7058_bottom_half, as7058_bottom_half_work);
+
+    gpio_init_callback(&as7058_cb_data, as7058_interrupt_handler,
+                       BIT(as7058_sensor_spec.pin));
     gpio_add_callback(as7058_sensor_spec.port, &as7058_cb_data);
 
-    // Enable the interrupt
-    ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_RISING);
-    if (ret != 0) {
-        printk("Error %d: failed to configure interrupt\n", ret);
-        result = ERR_SYSTEM_CONFIG;
-    }
+    /* If DT has GPIO_ACTIVE_LOW, EDGE_TO_ACTIVE => falling edge.
+       Otherwise, pick rising/falling explicitly per your wiring. */
+    // ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec,
+    //                                       GPIO_INT_EDGE_TO_ACTIVE);
 
-
-    if (ERR_SUCCESS == result) {
-        g_device_config.init_done = TRUE;
-    } else {
-        as7058_osal_shutdown();
-    }
-
-
+    g_device_config.callback = NULL; /* will be set by register_int_handler */
+    g_device_config.init_done = TRUE;
     return result;
 }
+
+ err_code_t as7058_osal_irq_enable(bool en)
+{
+    if (!g_device_config.init_done) return ERR_PERMISSION;
+
+    if (en) {
+        /* With ACTIVE_LOW in DT, TO_ACTIVE == falling edge */
+        int ret = gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_EDGE_TO_ACTIVE);
+        return ret ? ERR_SYSTEM_CONFIG : ERR_SUCCESS;
+    } else {
+        gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_DISABLE);
+        return ERR_SUCCESS;
+    }
+}
+
+
+
+
 
 err_code_t as7058_osal_write_registers(uint8_t address,
                                       uint16_t number,
@@ -183,7 +207,7 @@ err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t 
         return ERR_PERMISSION;
     }
 
-  //  M_CHECK_NULL_POINTER(p_values);
+    M_CHECK_NULL_POINTER(p_values);
 
     /* Repeated-start: write 1 byte (reg addr), then read `number` bytes */
     int ret = i2c_write_read(i2c_dev1, g_i2c_address, &address, 1, p_values, number);
@@ -194,31 +218,21 @@ err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t 
     return ERR_SUCCESS;
 }
 
-err_code_t as7058_osal_register_int_handler(as7058_osal_interrupt_t callback_function)
+/* As before, but keep the log to verify registration happens */
+err_code_t as7058_osal_register_int_handler(as7058_osal_interrupt_t cb_fn)
 {
-    if (FALSE == g_device_config.init_done) {
-        return ERR_PERMISSION;
-    }
-
-    g_device_config.callback = callback_function;
-
+    if (!g_device_config.init_done) return ERR_PERMISSION;
+    printk("as7058_osal_register_int_handler called, cb=%p\n", (void*)cb_fn);
+    g_device_config.callback = cb_fn;
     return ERR_SUCCESS;
 }
 
+
 err_code_t as7058_osal_shutdown(void)
 {
-    /* Clean up of system resources */
-
-    /* Deactivate interrupt pin */
-    // TODO int_pin_shutdown();
-
-    gpio_pin_interrupt_configure_dt(&as7058_sensor_spec,
-                                               GPIO_INT_DISABLE);
-
-    /* Disable I2C */
-    // TODO i2c_shutdown();
+    gpio_pin_interrupt_configure_dt(&as7058_sensor_spec, GPIO_INT_DISABLE);
+    gpio_remove_callback(as7058_sensor_spec.port, &as7058_cb_data);
 
     memset(&g_device_config, 0, sizeof(g_device_config));
-
     return ERR_SUCCESS;
 }

@@ -535,19 +535,19 @@ int main(void)
         "\nPress Ctrl+C to stop the measurement. The first output will be generated in approximately 10 seconds.\n\n");
 
 
-    interrupt_calling_func();
+    // interrupt_calling_func();
 
 
 
-    uint8_t* ptr1 =  get_fifo_data();
-    for(int i=0; i<18; i++){
-        printk("ptr1[%d]: %d \n", i, ptr1[i]);
-    }
-       int as_data_state;
-       as7058_status_events_t* status_events = get_status_events();
-    //   err_code_t as_data = as7058a_hrm_b0_set_input(ptr1, 18,*status_events,NULL,0,NULL,0,&as_data_state);
-    //     printk("as7058a_hrm_b0_set_input err: %d \n", as_data);
-    printk("as7058a_hrm_b0_get_version: %s \n", as7058a_hrm_b0_get_version());
+    // uint8_t* ptr1 =  get_fifo_data();
+    // for(int i=0; i<18; i++){
+    //     printk("ptr1[%d]: %d \n", i, ptr1[i]);
+    // }
+    //    int as_data_state;
+    //    as7058_status_events_t* status_events = get_status_events();
+    // //   err_code_t as_data = as7058a_hrm_b0_set_input(ptr1, 18,*status_events,NULL,0,NULL,0,&as_data_state);
+    // //     printk("as7058a_hrm_b0_set_input err: %d \n", as_data);
+    // printk("as7058a_hrm_b0_get_version: %s \n", as7058a_hrm_b0_get_version());
 
     uint32_t output_counter = 0;
     while (g_keep_running) {
