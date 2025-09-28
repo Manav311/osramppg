@@ -19,6 +19,37 @@
 
 #include "as7058a_spo2_a0.h"
 
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/i2c.h>
+
+#include "as7058_osal_chiplib.h"
+
+
+
+/*! internal structure which saves OSAL internal parameter */
+struct device_config {
+    volatile uint8_t init_done;                /*!< 0 < ::as7058_osal_initialize was successful called */
+    volatile as7058_osal_interrupt_t callback; /*!< saves the link to the callback function of the chiplib */
+};
+
+/******************************************************************************
+ *                                  GLOBALS                                   *
+ ******************************************************************************/
+
+/*! I2C address of the AS7058 */
+
+
+
+
+/*! Create internal instance of the device configuration */
+static struct device_config g_device_config;
+
+/* Pull the GPIO spec from DT: */
+static const struct gpio_dt_spec sens_int = GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), my_sensor_int_gpios);
+/* Declare the callback object */
+static struct gpio_callback sens_cb;
+
+
 /******************************************************************************
  *                                   GLOBALS                                  *
  ******************************************************************************/
@@ -50,6 +81,8 @@ static void as7058_callback(err_code_t error, const uint8_t *p_fifo_data, uint16
                             const agc_status_t *p_agc_statuses, uint8_t agc_statuses_num,
                             as7058_status_events_t sensor_events, const void *p_cb_param)
 {
+
+    printk("as7058_callback\n");
     /* Unused parameter, silence potentially enabled compiler warning. */
     M_UNUSED_PARAM(p_cb_param);
 
@@ -79,6 +112,31 @@ static void as7058_callback(err_code_t error, const uint8_t *p_fifo_data, uint16
  *                              GLOBAL FUNCTIONS                              *
  ******************************************************************************/
 
+ static void my_sensor_irq(const struct device *port,
+                          struct gpio_callback *cb,
+                          uint32_t pins)
+{
+	/* handle your interrupt here */
+	printk("Sensor IRQ!\n");
+    err_code_t result;
+    uint8_t pin_state = 0;
+    
+
+    if (NULL != g_device_config.callback) {
+        do {
+            printk("my_sensor_irq\n");
+            /* Calls the ChipLib callback function registered by as7058_osal_register_int_handler */
+            result = g_device_config.callback();
+
+            /* Read the pin state again because it could be high in meanwhile again */
+            if (ERR_SUCCESS == result) {
+                 pin_state = gpio_pin_get_dt(&sens_int);
+            }
+
+        } while ((ERR_SUCCESS == result) && pin_state);
+}
+}
+
 int main(void)
 {
 
@@ -93,11 +151,35 @@ int main(void)
      * OSAL-specific interface string. For the Windows OSAL that is used by this sample code, this string needs to
      * contain the serial port the AS7058A EVK is connected to, prefixed by "COM:". Assuming that the AS7058A EVK is
      * connected to serial port COM7, the interface string needs to be "COM:COM7". */
+
+
     err_code_t result = as7058_initialize(as7058_callback, NULL, NULL, NULL);
     if (result != ERR_SUCCESS) {
         printf("as7058_initialize returned error %d.\n", result);
         goto ERROR;
     }
+
+    
+	if (!device_is_ready(sens_int.port)) {
+		result = ERR_SYSTEM_CONFIG;
+	}
+
+	int ret = gpio_pin_configure_dt(&sens_int, GPIO_INPUT);
+	if (ret) {
+		result = ERR_SYSTEM_CONFIG;
+	}
+
+	/* Choose edge/polarity to match your device */
+	ret = gpio_pin_interrupt_configure_dt(&sens_int,
+					      GPIO_INT_EDGE_RISING);
+	if (ret) {
+		result = ERR_SYSTEM_CONFIG;
+	}
+
+	/* Initialise the callback and register it */
+	gpio_init_callback(&sens_cb, my_sensor_irq, BIT(sens_int.pin));
+	gpio_add_callback(sens_int.port, &sens_cb);
+
 
     /* Initialize the SpO2 library. */
     result = as7058a_spo2_a0_initialize();

@@ -57,28 +57,7 @@ const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c21));
  ******************************************************************************/
 
  /* This is the ISR you want called on an edge */
-static void my_sensor_irq(const struct device *port,
-                          struct gpio_callback *cb,
-                          uint32_t pins)
-{
-	/* handle your interrupt here */
-	printk("Sensor IRQ!\n");
-    err_code_t result;
-    uint8_t pin_state = 0;
 
-    if (NULL != g_device_config.callback) {
-        do {
-            /* Calls the ChipLib callback function registered by as7058_osal_register_int_handler */
-            result = g_device_config.callback();
-
-            /* Read the pin state again because it could be high in meanwhile again */
-            if (ERR_SUCCESS == result) {
-                 pin_state = gpio_pin_get_dt(&sens_int);
-            }
-
-        } while ((ERR_SUCCESS == result) && pin_state);
-}
-}
 
 /*! Interrupt service routine of the interrupt pin */
 
@@ -114,25 +93,6 @@ err_code_t as7058_osal_initialize(const char *p_interface_desc)
    
 
 
-	if (!device_is_ready(sens_int.port)) {
-		result = ERR_SYSTEM_CONFIG;
-	}
-
-	ret = gpio_pin_configure_dt(&sens_int, GPIO_INPUT);
-	if (ret) {
-		result = ERR_SYSTEM_CONFIG;
-	}
-
-	/* Choose edge/polarity to match your device */
-	ret = gpio_pin_interrupt_configure_dt(&sens_int,
-					      GPIO_INT_EDGE_FALLING);
-	if (ret) {
-		result = ERR_SYSTEM_CONFIG;
-	}
-
-	/* Initialise the callback and register it */
-	gpio_init_callback(&sens_cb, my_sensor_irq, BIT(sens_int.pin));
-	gpio_add_callback(sens_int.port, &sens_cb);
 
     /* Configure interrupt pin: Triggering on rising edge, register interrupt_callback */
     // TODO if ((ERR_SUCCESS == result) && (RETURN_CODE_OK != int_pin_init(TRIG_RISING, interrupt_callback))
@@ -196,6 +156,7 @@ err_code_t as7058_osal_read_registers(uint8_t address, uint16_t number, uint8_t 
 
 err_code_t as7058_osal_register_int_handler(as7058_osal_interrupt_t callback_function)
 {
+    printk("as7058_osal_register_int_handler\n");
     if (FALSE == g_device_config.init_done) {
         return ERR_PERMISSION;
     }
