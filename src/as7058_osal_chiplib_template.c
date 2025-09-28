@@ -66,45 +66,9 @@ static void as7058_interrupt_handler(const struct device *dev,
  ******************************************************************************/
 
 /* --- Bottom-half worker: safe context for I2C/chiplib --- */
-static void as7058_bottom_half_work(struct k_work *work)
-{
-    if (!g_device_config.init_done || g_device_config.callback == NULL) {
-        return;
-    }
 
-    /* Drain until INT de-asserts (handles coalesced/fast IRQs) */
-    for (;;) {
-        err_code_t res = g_device_config.callback();
-
-        int lvl = gpio_pin_get_dt(&sens_int);
-        //printk("chiplib cb res=%d, line=%d\n", res, lvl);
-
-        /* Re-read line; if inactive, we're done */
-        int pin_state = gpio_pin_get_dt(&sens_int);
-        if (res != ERR_SUCCESS || pin_state) {
-            /* pin_state == 1 means line is HIGH. If ACTIVE_LOW, HIGH == idle */
-            break;
-        }
-        /* Optional: yield a bit if needed */
-        /* k_yield(); */
-    }
-}
 
 /* --- Top-half ISR: keep it tiny --- */
-static void as7058_interrupt_handler(const struct device *dev,
-                                     struct gpio_callback *cb,
-                                     uint32_t pins)
-{
-    ARG_UNUSED(dev);
-    ARG_UNUSED(cb);
-    ARG_UNUSED(pins);
-
-
-     int lvl = gpio_pin_get_dt(&sens_int);
-   // printk("AS7058 IRQ fired, line now=%d (0=active if ACTIVE_LOW)\n", lvl);
-    /* Wake the bottom half. If IRQs can coalesce, a sem is fine too: */
-    k_work_submit(&as7058_bottom_half);
-}
 
 /* --- Init: configure GPIO + IRQ + worker --- */
 err_code_t as7058_osal_initialize(void)
@@ -124,16 +88,16 @@ err_code_t as7058_osal_initialize(void)
 
     /* If line is open-drain active-low, ensure DT has PULL_UP|ACTIVE_LOW.
        Here we just configure as input; flags come from DT. */
-    int ret = gpio_pin_configure_dt(&sens_int, GPIO_INPUT);
-    if (ret) {
-        return ERR_SYSTEM_CONFIG;
-    }
+    // int ret = gpio_pin_configure_dt(&sens_int, GPIO_INPUT);
+    // if (ret) {
+    //     return ERR_SYSTEM_CONFIG;
+    // }
 
-    k_work_init(&as7058_bottom_half, as7058_bottom_half_work);
+    // k_work_init(&as7058_bottom_half, as7058_bottom_half_work);
 
-    gpio_init_callback(&as7058_cb_data, as7058_interrupt_handler,
-                       BIT(sens_int.pin));
-    gpio_add_callback(sens_int.port, &as7058_cb_data);
+    // gpio_init_callback(&as7058_cb_data, as7058_interrupt_handler,
+    //                    BIT(sens_int.pin));
+    // gpio_add_callback(sens_int.port, &as7058_cb_data);
 
     /* If DT has GPIO_ACTIVE_LOW, EDGE_TO_ACTIVE => falling edge.
        Otherwise, pick rising/falling explicitly per your wiring. */
@@ -145,19 +109,7 @@ err_code_t as7058_osal_initialize(void)
     return result;
 }
 
- err_code_t as7058_osal_irq_enable(bool en)
-{
-    if (!g_device_config.init_done) return ERR_PERMISSION;
 
-    if (en) {
-        /* With ACTIVE_LOW in DT, TO_ACTIVE == falling edge */
-        int ret = gpio_pin_interrupt_configure_dt(&sens_int, GPIO_INT_EDGE_TO_ACTIVE);
-        return ret ? ERR_SYSTEM_CONFIG : ERR_SUCCESS;
-    } else {
-        gpio_pin_interrupt_configure_dt(&sens_int, GPIO_INT_DISABLE);
-        return ERR_SUCCESS;
-    }
-}
 
 
 

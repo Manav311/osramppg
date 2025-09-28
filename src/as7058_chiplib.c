@@ -68,6 +68,8 @@ uint8_t fifo_data[AS7058_FIFO_DATA_BUFFER_SIZE];
 uint16_t fifo_data_size = 0;
 
 as7058_status_events_t status_events = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+
 static err_code_t interrupt_handler(void)
 {
     err_code_t result;
@@ -192,6 +194,35 @@ static err_code_t interrupt_handler(void)
     return result;
 }
 
+/* --- POLLING MODE (no GPIO INT) --- */
+#define AS7058_POLL_PERIOD_MS 20  /* ~50 Hz; tune as needed */
+
+static struct k_work_delayable as7058_poll_work;
+
+static void as7058_poll_fn(struct k_work *work)
+{
+    /* Emulate INT: if FIFO threshold is set, drain via the same handler */
+    as7058_interrupt_t st;
+    if (as7058_ifce_get_interrupt_status(&st) == ERR_SUCCESS && st.fifo_threshold) {
+
+        /* Call the same handler your ISR bottom-half would call */
+        if (g_dev_config.is_meas_running && g_dev_config.p_normal_callback) {
+            /* One shot: the handler internally drains FIFO and runs AGC/HRM */
+            (void)interrupt_handler();
+
+            /* If you expect bursts, you can loop a few times:
+               for (int i = 0; i < 3 && as7058_ifce_get_interrupt_status(&st)==ERR_SUCCESS && st.fifo_threshold; ++i) {
+                   (void)interrupt_handler();
+               }
+            */
+        }
+    }
+
+    /* Re-arm the poll */
+    k_work_reschedule(&as7058_poll_work, K_MSEC(AS7058_POLL_PERIOD_MS));
+}
+
+
 uint8_t* get_fifo_data(){
     return fifo_data;
 }
@@ -310,6 +341,10 @@ err_code_t as7058_initialize(const as7058_callback_t p_normal_callback,
         g_dev_config.lib_state = LIB_STATE_CONFIGURATION;
         g_dev_config.is_meas_running = FALSE;
     }
+
+    /* after agc/osal/etc. succeed, before returning */
+k_work_init_delayable(&as7058_poll_work, as7058_poll_fn);
+
 
     return result;
 }
@@ -549,10 +584,10 @@ err_code_t as7058_start_measurement(as7058_meas_mode_t mode)
     }
 
     /* One-time clear of any latched interrupt before enabling line */
-as7058_ifce_get_interrupt_status(&(as7058_interrupt_t){0});  // ignore result
-as7058_ifce_get_fifo_level(&(uint16_t){0});                   // optional read to clear
-/* Now enable GPIO IRQ */
-as7058_osal_irq_enable(true);
+// as7058_ifce_get_interrupt_status(&(as7058_interrupt_t){0});  // ignore result
+// as7058_ifce_get_fifo_level(&(uint16_t){0});                   // optional read to clear
+// /* Now enable GPIO IRQ */
+// as7058_osal_irq_enable(true);
 
 
     if ((ERR_SUCCESS == result) && (AS7058_MEAS_MODE_NORMAL != mode)) {
@@ -581,6 +616,18 @@ as7058_osal_irq_enable(true);
     }
 
     if (ERR_SUCCESS == result) {
+    g_dev_config.lib_state = LIB_STATE_MEASUREMENT;
+    g_dev_config.mode = mode;
+
+    /* If you were using GPIO before, keep it disabled now.
+       Kick off polling instead: */
+    k_work_schedule(&as7058_poll_work, K_MSEC(AS7058_POLL_PERIOD_MS));
+} else {
+    as7058_stop_measurement();
+}
+
+
+    if (ERR_SUCCESS == result) {
         g_dev_config.lib_state = LIB_STATE_MEASUREMENT;
         g_dev_config.mode = mode;
     } else {
@@ -595,7 +642,7 @@ err_code_t as7058_stop_measurement(void)
     err_code_t result = ERR_DATA_TRANSFER;
 
     /* in as7058_stop_measurement() and/as7058_shutdown() */
-as7058_osal_irq_enable(false);
+//as7058_osal_irq_enable(false);
 
 
     if (LIB_STATE_UNINITIALIZED == g_dev_config.lib_state) {
@@ -603,6 +650,9 @@ as7058_osal_irq_enable(false);
     }
 
     g_dev_config.is_meas_running = FALSE;
+
+    k_work_cancel_delayable(&as7058_poll_work);
+
 
     result = as7058_ifce_stop_measurement();
 
