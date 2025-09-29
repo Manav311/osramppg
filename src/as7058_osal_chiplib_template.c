@@ -151,7 +151,7 @@ err_code_t as7058_osal_initialize(void)
 
     if (en) {
         /* With ACTIVE_LOW in DT, TO_ACTIVE == falling edge */
-        int ret = gpio_pin_interrupt_configure_dt(&sens_int, GPIO_INT_EDGE_TO_ACTIVE);
+        int ret = gpio_pin_interrupt_configure_dt(&sens_int, GPIO_INT_EDGE_RISING);
         return ret ? ERR_SYSTEM_CONFIG : ERR_SUCCESS;
     } else {
         gpio_pin_interrupt_configure_dt(&sens_int, GPIO_INT_DISABLE);
